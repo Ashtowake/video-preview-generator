@@ -66,7 +66,7 @@ def get_video_metadata(filepath):
 
 class VideoPreviewGeneratorApp:
     def __init__(self):
-        self.app = ttk.Window(title="Simple Video Preview Maker", themename="darkly")
+        self.app = ttk.Window(title="Video Preview Generator", themename="darkly")
         self.app.geometry("1280x720")
         # Layout: controls, table, preview
         self.app.columnconfigure(0, weight=1)
