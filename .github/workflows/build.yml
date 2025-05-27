@@ -27,12 +27,7 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller main.py ^
-            --name VideoPreviewGenerator ^
-            --onefile ^
-            --noconsole ^
-            --add-data "src/assets;src/assets" ^
-            --hidden-import=ttkbootstrap.tooltip
+          pyinstaller main.py --name VideoPreviewGenerator --onefile --noconsole --add-data "src/assets;src/assets" --hidden-import=ttkbootstrap.tooltip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
