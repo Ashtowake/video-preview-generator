@@ -45,6 +45,6 @@ echo [4/4] Setup complete.
 
 REM Optional: Launch script
 REM echo Launching application...
-REM start "" venv\Scripts\pythonw.exe gui.pyw
+REM start "" venv\Scripts\pythonw.exe main.py
 
 pause

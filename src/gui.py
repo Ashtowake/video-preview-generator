@@ -10,7 +10,7 @@ from ttkbootstrap.style import Bootstyle
 from tkinter import filedialog, messagebox
 from pathlib import Path
 from PIL import Image, ImageTk
-from cli import make_thumbnail_sheet
+from src.cli import make_thumbnail_sheet
 
 # CollapsingFrame (from ttkbootstrap gallery) with default collapsed
 IMG_PATH = Path(__file__).parent / 'assets'
