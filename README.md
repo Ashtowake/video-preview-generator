@@ -18,9 +18,12 @@ Use the following command-line arguments to customize the output:
 - `--font-size`: Font size for the watermark text. Default is `25`.
 - `--text-opacity`: Opacity of the watermark text, from `0` to `1`. Default is `1.0`.
 
-Example:
+Examples:
 ```bash
-(venv) python cli.py input.mp4 -o ./previews/output.png --logo-path logo.png --watermark-text "Sample" --font-size 50 --text-opacity 0.5
+python cli.py input.mp4
+```
+```bash
+python cli.py input.mp4 -o ./previews/output.png --logo-path logo.png --watermark-text "Sample" --font-size 50 --text-opacity 0.5
 ```
 
 
