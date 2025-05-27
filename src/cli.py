@@ -203,7 +203,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate a video thumbnail sheet with optional logo and watermark text")
     parser.add_argument("video", help="Video file path")
     parser.add_argument("-o", "--output", default=None, help="Output PNG path")
-    parser.add_argument("--font", default=None, help="Path to TTF font for all text")
+    # parser.add_argument("--font", default=None, help="Path to TTF font for all text")
     parser.add_argument("--scale", type=float, default=1.0, help="Scale factor relative to 2560×1440 = 1.0")
     parser.add_argument("--logo-path", dest="logo_path", default=None, help="Path to logo PNG")
     parser.add_argument("--logo-opacity", dest="logo_opacity", type=float, default=1, help="Logo opacity 0..1")
@@ -223,7 +223,7 @@ def main():
         border_size=1,
         outer_margin=15,
         scale_factor=args.scale,
-        font_path=args.font,
+        # font_path=args.font,
         logo_path=args.logo_path,
         logo_opacity=args.logo_opacity,
         watermark_text=args.watermark_text,
