@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import tkinter as tk
 import cv2
@@ -79,11 +80,11 @@ class VideoPreviewGeneratorApp:
         controls.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         controls.columnconfigure(0, weight=1)
 
-        ttk.Button(controls, text="Select Video Files", command=self.select_input_files).grid(
+        ttk.Button(controls, text="Select Video File(s)", command=self.select_input_files).grid(
             row=0, column=0, sticky="ew", pady=(0,10))
-        ttk.Button(controls, text="Remove Selected File", bootstyle="danger",
+        ttk.Button(controls, text="Remove Selected File(s)", bootstyle="danger",
                    command=self.remove_selected).grid(row=1, column=0, sticky="ew", pady=(0,10))
-        ttk.Button(controls, text="Select Output Directory", command=self.select_output_dir).grid(
+        ttk.Button(controls, text="Select Different Output Directory", command=self.select_output_dir).grid(
             row=2, column=0, sticky="ew", pady=(0,10))
 
         # Collapsible More Settings
@@ -118,9 +119,17 @@ class VideoPreviewGeneratorApp:
         #     row=row_num, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
         # row_num += 1
 
+        ttk.Label(settings, text="Font Opacity:").grid(row=row_num, column=0, sticky="w", padx=5, pady=5)
+        self.font_opacity = tk.DoubleVar(value=1.0)
+        slider = ttk.Scale(settings, from_=0.0, to=1.0, variable=self.font_opacity)
+        slider.grid(row=row_num, column=1, sticky="ew", padx=5, pady=5)
+        slider.bind('<ButtonRelease-1>',
+                    lambda e: self.font_opacity.set(round(self.font_opacity.get(), 2)))
+        row_num += 1
+
         # Logo and opacity
         ttk.Label(settings, text="Logo:").grid(row=row_num, column=0, sticky="w", padx=5, pady=5)
-        ttk.Button(settings, text="Select Watermark Logo", command=self.select_logo).grid(
+        ttk.Button(settings, text="Select Watermark/Logo", command=self.select_logo).grid(
             row=row_num, column=1, sticky="ew", padx=5, pady=5)
         row_num += 1
 
@@ -156,7 +165,7 @@ class VideoPreviewGeneratorApp:
         self.current_image = None
 
     def select_input_files(self):
-        files = filedialog.askopenfilenames(title="Select Video Files",
+        files = filedialog.askopenfilenames(title="Select Video File(s)",
                                             filetypes=[("Video Files","*.mp4;*.mov;*.avi;*.mkv;*.webm")])
         if files:
             self.input_files = list(files)
@@ -186,12 +195,12 @@ class VideoPreviewGeneratorApp:
 
     def select_output_dir(self):
         directory = filedialog.askdirectory(initialdir=getattr(self, 'output_dir', None),
-                                            title="Select Output Directory")
+                                            title="Select Different Output Directory")
         if directory:
             self.output_dir = directory
 
     def select_logo(self):
-        file = filedialog.askopenfilename(title="Select Watermark Logo",
+        file = filedialog.askopenfilename(title="Select Watermark/Logo",
                                           filetypes=[("Image Files","*.png;*.jpg;*.jpeg")])
         if file:
             self.logo_path = file
@@ -299,7 +308,7 @@ class VideoPreviewGeneratorApp:
                     logo_opacity=float(self.opacity.get()),
                     watermark_text=self.text_entry.get(),
                     watermark_font_size=int(self.font_size.get()),
-                    watermark_text_opacity=float(self.opacity.get())
+                    watermark_text_opacity=float(self.font_opacity.get())
                 )
             except Exception as e:
                 print(f"something went wrong: {e}")

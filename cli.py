@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os, sys, argparse, cv2
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
