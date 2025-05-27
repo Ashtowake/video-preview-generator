@@ -1,4 +1,3 @@
 opencv-python>=4.7
 Pillow>=9.5
-click>=8.1
 ttkbootstrap>=1.8

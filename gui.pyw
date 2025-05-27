@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 from cli import make_thumbnail_sheet
 
 # CollapsingFrame (from ttkbootstrap gallery) with default collapsed
-IMG_PATH = Path(__file__).parent / 'video_preview_generator' / 'assets'
+IMG_PATH = Path(__file__).parent / 'assets'
 
 class CollapsingFrame(ttk.Frame):
     """A collapsible frame widget that opens and closes with a click."""
@@ -66,7 +66,7 @@ def get_video_metadata(filepath):
 
 class VideoPreviewGeneratorApp:
     def __init__(self):
-        self.app = ttk.Window(title="Video Preview Generator", themename="darkly")
+        self.app = ttk.Window(title="Video Preview Sheet Generator", themename="darkly")
         self.app.geometry("1280x720")
         # Layout: controls, table, preview
         self.app.columnconfigure(0, weight=1)
@@ -98,15 +98,9 @@ class VideoPreviewGeneratorApp:
         # Output Image Scaling Factor
         ttk.Label(settings, text="Image Scaling Factor: ").grid()
         self.scaling_factor = ttk.Combobox(settings, values=[1,1.5,2], state="readonly")
-        self.scaling_factor.set(1.5)
+        self.scaling_factor.set(1)
         self.scaling_factor.grid(row=row_num, column=1, sticky="ew", padx=5, pady=5)
         
-        row_num += 1
-
-        # Logo and opacity
-        ttk.Label(settings, text="Logo:").grid(row=row_num, column=0, sticky="w", padx=5, pady=5)
-        ttk.Button(settings, text="Select Watermark Logo", command=self.select_logo).grid(
-            row=row_num, column=1, sticky="ew", padx=5, pady=5)
         row_num += 1
 
         # Text watermark
@@ -120,8 +114,14 @@ class VideoPreviewGeneratorApp:
         self.font_size = ttk.Entry(settings)
         self.font_size.grid(row=row_num, column=1, sticky="ew", padx=5, pady=5)
         row_num += 1
-        ttk.Button(settings, text="Select Font (.ttf)", command=self.select_font).grid(
-            row=row_num, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        # ttk.Button(settings, text="Select Font (.ttf)", command=self.select_font).grid(
+        #     row=row_num, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        # row_num += 1
+
+        # Logo and opacity
+        ttk.Label(settings, text="Logo:").grid(row=row_num, column=0, sticky="w", padx=5, pady=5)
+        ttk.Button(settings, text="Select Watermark Logo", command=self.select_logo).grid(
+            row=row_num, column=1, sticky="ew", padx=5, pady=5)
         row_num += 1
 
         ttk.Label(settings, text="Logo Opacity:").grid(row=row_num, column=0, sticky="w", padx=5, pady=5)
@@ -196,11 +196,12 @@ class VideoPreviewGeneratorApp:
         if file:
             self.logo_path = file
 
-    def select_font(self):
-        file = filedialog.askopenfilename(title="Select Font File",
-                                          filetypes=[("TTF Files","*.ttf")])
-        if file:
-            self.font_path = file
+    ## initially implemented but caused too many formatting issues
+    # def select_font(self):
+    #     file = filedialog.askopenfilename(title="Select Font File",
+    #                                       filetypes=[("TTF Files","*.ttf")])
+    #     if file:
+    #         self.font_path = file
 
     def show_preview(self, event=None, fraction=0.5):
         sel = self.tree.selection()
@@ -298,8 +299,7 @@ class VideoPreviewGeneratorApp:
                     logo_opacity=float(self.opacity.get()),
                     watermark_text=self.text_entry.get(),
                     watermark_font_size=int(self.font_size.get()),
-                    watermark_text_opacity=float(self.opacity.get()),
-                    #logo_align="right"
+                    watermark_text_opacity=float(self.opacity.get())
                 )
             except Exception as e:
                 print(f"something went wrong: {e}")
