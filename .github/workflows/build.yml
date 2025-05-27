@@ -1,59 +1,41 @@
-name: Build Cross-Platform Binaries
+name: Build Windows Executable
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  build-windows:
+    runs-on: windows-latest
 
     steps:
-    - name: Checkout source
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Build executable
-      run: |
-        if [ "$RUNNER_OS" = "Windows" ]; then \
-          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets;assets" --hidden-import=ttkbootstrap.tooltip; \
-        elif [ "$RUNNER_OS" = "macOS" ]; then \
-          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets" --hidden-import=ttkbootstrap.tooltip; \
-        else \
-          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets" --hidden-import=ttkbootstrap.tooltip; \
-        fi
+      - name: Build executable
+        run: |
+          pyinstaller main.py ^
+            --name VideoPreviewGenerator ^
+            --onefile ^
+            --noconsole ^
+            --add-data "src/assets;src/assets" ^
+            --hidden-import=ttkbootstrap.tooltip
 
-    - name: Check output and upload
-      run: |
-        if exist dist\VideoPreviewGenerator.exe (
-          echo Binary found, uploading...
-        ) else (
-          echo [ERROR] Binary not created! Check PyInstaller output above.
-          dir
-          exit /b 1
-        )
-      shell: cmd
-
-    - name: Upload binary
-      if: success()
-      uses: actions/upload-artifact@v3
-      with:
-        name: VideoPreviewGenerator
-        path: dist/VideoPreviewGenerator*
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoPreviewGenerator-Windows
+          path: dist/VideoPreviewGenerator.exe
