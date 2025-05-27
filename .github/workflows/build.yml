@@ -40,8 +40,20 @@ jobs:
           pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets" --hidden-import=ttkbootstrap.tooltip; \
         fi
 
-    - name: Upload Artifact
+    - name: Check output and upload
+      run: |
+        if exist dist\VideoPreviewGenerator.exe (
+          echo Binary found, uploading...
+        ) else (
+          echo [ERROR] Binary not created! Check PyInstaller output above.
+          dir
+          exit /b 1
+        )
+      shell: cmd
+
+    - name: Upload binary
+      if: success()
       uses: actions/upload-artifact@v3
       with:
-        name: VideoPreviewGenerator-${{ matrix.os }}
+        name: VideoPreviewGenerator
         path: dist/VideoPreviewGenerator*
