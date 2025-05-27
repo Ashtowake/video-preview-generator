@@ -25,5 +25,8 @@ Example:
 
 
 Previews:
+![Screenshot 2025-05-27 18-35-40](https://github.com/user-attachments/assets/65c62cc6-075a-4997-9599-d7e50f00a3f7)
+
 ![vertical_preview](https://github.com/user-attachments/assets/f2dcc8d3-f28a-4ef9-a7ea-5d1db9e5d3bf)
+
 ![horizontal_preview](https://github.com/user-attachments/assets/f4aee5c2-08bb-4a60-977e-6306f89fff99)
