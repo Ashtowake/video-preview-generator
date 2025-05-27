@@ -107,7 +107,7 @@ def make_thumbnail_sheet(
         logo = logo.resize((int(logo.width*scale_l),int(logo.height*scale_l)), Image.LANCZOS)
         alpha = logo.split()[3].point(lambda p: int(p*logo_opacity))
         logo.putalpha(alpha)
-        xL = sheet_w-outer-logo.width
+        xL = sheet_w-outer-logo.width-pad
         yL = outer + (meta_height//2) - (logo.height//2)
         sheet.paste(logo, (xL,yL), logo)
     if watermark_text:
@@ -115,7 +115,7 @@ def make_thumbnail_sheet(
         td = ImageDraw.Draw(layer)
         txt = watermark_text.upper()
         w, h = td.textbbox((0,0), txt, font=font_wm)[2:]
-        xT = (xL - pad) if logo_path else (sheet_w-outer)
+        xT = (xL - pad*2) if logo_path else (sheet_w-outer)
         td.text((xT, outer+(meta_height//2)), txt, font=font_wm,
                 fill=(255,255,255,int(255*watermark_text_opacity)),
                 anchor="rm")
