@@ -32,9 +32,9 @@ jobs:
     - name: Run PyInstaller
       run: |
         if [ "$RUNNER_OS" = "Windows" ]; then \
-          pyinstaller gui.pyw --name YourApp --onefile --noconsole --add-data "assets;assets"; \
+          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets;assets"; \
         else \
-          pyinstaller gui.pyw --name YourApp --onefile --noconsole --add-data "assets:assets"; \
+          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets"; \
         fi
 
     - name: Upload Artifact
