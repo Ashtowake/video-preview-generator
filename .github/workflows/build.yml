@@ -11,6 +11,7 @@ jobs:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -29,17 +30,18 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Run PyInstaller
+    - name: Build executable
       run: |
         if [ "$RUNNER_OS" = "Windows" ]; then \
-          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets;assets"; \
+          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets;assets" --hidden-import=ttkbootstrap.tooltip; \
+        elif [ "$RUNNER_OS" = "macOS" ]; then \
+          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets" --hidden-import=ttkbootstrap.tooltip; \
         else \
-          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets"; \
+          pyinstaller gui.pyw --name VideoPreviewGenerator --onefile --noconsole --add-data "assets:assets" --hidden-import=ttkbootstrap.tooltip; \
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
         name: VideoPreviewGenerator-${{ matrix.os }}
-        path: |
-          dist/VideoPreviewGenerator*
+        path: dist/VideoPreviewGenerator*
