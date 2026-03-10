@@ -99,14 +99,20 @@ interface Catalog {
     wider: string;
     sharpestNeighbour: string;
     globalStyle: string;
+    exportSettings: string;
     rows: string;
     columns: string;
     roundedCorners: string;
     shadow: string;
+    border: string;
     gutter: string;
     margin: string;
+    metadataBar: string;
+    timestamps: string;
+    darkMode: string;
     format: string;
     scale: string;
+    watermarkText: string;
   };
   preferences: {
     title: string;
@@ -202,14 +208,20 @@ const en: Catalog = {
     wider: "Wider",
     sharpestNeighbour: "Find sharpest neighbour",
     globalStyle: "Global style",
+    exportSettings: "Export and watermark",
     rows: "Rows",
     columns: "Columns",
     roundedCorners: "Rounded corners",
     shadow: "Shadow",
+    border: "Border",
     gutter: "Gutter",
     margin: "Margin",
+    metadataBar: "Metadata bar",
+    timestamps: "Timestamps",
+    darkMode: "Dark mode",
     format: "Format",
     scale: "Scale",
+    watermarkText: "Watermark text",
   },
   preferences: {
     title: "Preferences",
@@ -388,14 +400,20 @@ const de: Catalog = {
     wider: "Breiter",
     sharpestNeighbour: "Schärfsten Nachbarn finden",
     globalStyle: "Globaler Stil",
+    exportSettings: "Export und Wasserzeichen",
     rows: "Zeilen",
     columns: "Spalten",
     roundedCorners: "Runde Ecken",
     shadow: "Schatten",
+    border: "Rahmen",
     gutter: "Abstand",
     margin: "Rand",
+    metadataBar: "Metadatenleiste",
+    timestamps: "Zeitstempel",
+    darkMode: "Dunkler Modus",
     format: "Format",
     scale: "Skalierung",
+    watermarkText: "Wasserzeichentext",
   },
   preferences: {
     title: "Einstellungen",

@@ -1,9 +1,19 @@
+mod preview_cache;
+
 use std::fs;
+use std::sync::Mutex;
 
 use tauri::Manager;
 use vpg_core::{
     DiagnosticsBundle, ExportResult, MediaService, PreviewFrame, ProjectFile, RenderPlan,
 };
+
+use crate::preview_cache::{PreviewCache, PreviewCacheKey};
+
+#[derive(Default)]
+struct AppState {
+    preview_cache: Mutex<PreviewCache>,
+}
 
 #[tauri::command]
 fn starter_project(video_path: Option<String>) -> ProjectFile {
@@ -36,13 +46,34 @@ fn estimate_full_fidelity(project: ProjectFile) -> vpg_core::DecodeEstimate {
 
 #[tauri::command]
 fn preview_frame(
+    state: tauri::State<'_, AppState>,
     project: ProjectFile,
     time_ms: u64,
     max_width: Option<u32>,
 ) -> Result<PreviewFrame, String> {
-    MediaService
-        .preview_frame(&project, time_ms, max_width.unwrap_or(640))
-        .map_err(|error| error.to_string())
+    let max_width = max_width.unwrap_or(640);
+    let cache_key = PreviewCacheKey::from_project(&project, time_ms, max_width);
+
+    if let Some(frame) = state
+        .preview_cache
+        .lock()
+        .map_err(|_| "preview cache lock poisoned".to_string())?
+        .get(&cache_key)
+    {
+        return Ok(frame);
+    }
+
+    let frame = MediaService
+        .preview_frame(&project, time_ms, max_width)
+        .map_err(|error| error.to_string())?;
+
+    state
+        .preview_cache
+        .lock()
+        .map_err(|_| "preview cache lock poisoned".to_string())?
+        .insert(cache_key, frame.clone());
+
+    Ok(frame)
 }
 
 #[tauri::command]
@@ -86,6 +117,7 @@ fn release_notes() -> Vec<String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_log::Builder::default().build())

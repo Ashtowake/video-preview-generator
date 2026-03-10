@@ -12,13 +12,17 @@ import {
   estimateFullFidelity,
   formatTimeMs,
   parseTimeDelta,
+  reshapeTilesForGrid,
   stepByFrames,
   stepByTime,
   validateProject,
   type AnalysisMode,
   type DiagnosticsBundle,
+  type ExportFormat,
+  type GridSettings,
   type PreviewFrame,
   type ProjectFile,
+  type ProjectStyle,
 } from "@video-preview/domain";
 import { create } from "zustand";
 
@@ -62,6 +66,12 @@ export interface EditorState {
   stepFrames: (direction: -1 | 1) => void;
   setAnalysisMode: (mode: AnalysisMode) => void;
   autoFill: () => void;
+  setGridDimensions: (rows: number, columns: number) => void;
+  setGridSpacing: (gutterPx: number, outerMarginPx: number) => void;
+  updateStyle: (style: Partial<ProjectStyle>) => void;
+  setExportFormat: (format: ExportFormat) => void;
+  setExportScale: (scale: number) => void;
+  setWatermarkText: (value: string) => void;
   selectTile: (tileId: string) => void;
   toggleTilePin: (tileId: string) => void;
   fineTuneTile: (tileId: string, deltaMs: number) => void;
@@ -81,10 +91,31 @@ let previewRequestSequence = 0;
 const localDiagnostics = (project: ProjectFile): DiagnosticsBundle => buildDiagnosticsBundle(project);
 
 /** Recomputes derived store fields after any project mutation. */
-const syncState = (project: ProjectFile) => ({
+const syncState = (project: ProjectFile, selectedTileId: string | null = null) => ({
   project,
   diagnostics: localDiagnostics(project),
-  selectedTileId: project.tiles[0]?.id ?? null,
+  selectedTileId: project.tiles.some((tile) => tile.id === selectedTileId)
+    ? selectedTileId
+    : project.tiles[0]?.id ?? null,
+});
+
+const clampGrid = (value: number): number => Math.min(12, Math.max(1, Math.round(value)));
+
+const clampGridSpacing = (value: number): number => Math.max(0, Math.round(value));
+
+const normalizedGrid = (grid: GridSettings): GridSettings => ({
+  ...grid,
+  rows: clampGrid(grid.rows),
+  columns: clampGrid(grid.columns),
+  gutterPx: clampGridSpacing(grid.gutterPx),
+  outerMarginPx: clampGridSpacing(grid.outerMarginPx),
+});
+
+const normalizedStyle = (style: ProjectStyle): ProjectStyle => ({
+  ...style,
+  frameRoundingPx: clampGridSpacing(style.frameRoundingPx),
+  frameShadowPx: clampGridSpacing(style.frameShadowPx),
+  frameBorderPx: clampGridSpacing(style.frameBorderPx),
 });
 
 /**
@@ -119,7 +150,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       previewFrame: null,
       previewBusy: false,
       previewError: null,
-      ...syncState(nextProject),
+      ...syncState(nextProject, get().selectedTileId),
       alert: { tone: "info", message: `Loaded ${file.name}` },
     });
   },
@@ -134,7 +165,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         previewFrame: null,
         previewBusy: false,
         previewError: null,
-        ...syncState(project),
+        ...syncState(project, get().selectedTileId),
         alert: { tone: "info", message: `Loaded ${path}` },
       });
     } catch (error) {
@@ -157,7 +188,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       },
       range: { ...get().project.range, endMs: durationMs },
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   setPlayheadMs: (playheadMs) => {
     const durationMs = get().project.video.durationMs ?? 60_000;
@@ -171,7 +202,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         activeFrameIndex: Math.round((nextPlayheadMs / 1000) * fps),
       },
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   setRangeStart: (startMs) => {
     const { project } = get();
@@ -182,7 +213,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         endMs: project.range.endMs,
       },
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   setRangeEnd: (endMs) => {
     const { project } = get();
@@ -194,7 +225,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         endMs: Math.max(Math.min(endMs, durationMs), project.range.startMs + 250),
       },
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   setCustomSkip: (value) => {
     try {
@@ -204,7 +235,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         playback: { ...get().project.playback, customSkipMs },
       };
       set({
-        ...syncState(nextProject),
+        ...syncState(nextProject, get().selectedTileId),
         alert: { tone: "info", message: `Custom jump set to ${formatTimeMs(customSkipMs)}` },
       });
     } catch (error) {
@@ -224,7 +255,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         frameStep: Math.max(1, Math.round(step)),
       },
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   stepCustom: (direction) => {
     const { project } = get();
@@ -274,7 +305,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const nextProject = { ...project, analysisMode: mode };
     set({
-      ...syncState(nextProject),
+      ...syncState(nextProject, get().selectedTileId),
       alert: {
         tone: "info",
         message:
@@ -295,7 +326,82 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         project.video.fps,
       ),
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
+  },
+  setGridDimensions: (rows, columns) => {
+    const { project, selectedTileId } = get();
+    const grid = normalizedGrid({ ...project.grid, rows, columns });
+    const reshapedTiles = reshapeTilesForGrid(project.tiles, grid.rows, grid.columns);
+    const nextProject = {
+      ...project,
+      grid,
+      tiles: autoFillTiles(
+        reshapedTiles,
+        project.range.startMs,
+        project.range.endMs,
+        project.video.fps,
+      ),
+    };
+    set(syncState(nextProject, selectedTileId));
+  },
+  setGridSpacing: (gutterPx, outerMarginPx) => {
+    const { project, selectedTileId } = get();
+    const nextProject = {
+      ...project,
+      grid: normalizedGrid({
+        ...project.grid,
+        gutterPx,
+        outerMarginPx,
+      }),
+    };
+    set(syncState(nextProject, selectedTileId));
+  },
+  updateStyle: (style) => {
+    const { project, selectedTileId } = get();
+    const nextProject = {
+      ...project,
+      style: normalizedStyle({
+        ...project.style,
+        ...style,
+      }),
+    };
+    set(syncState(nextProject, selectedTileId));
+  },
+  setExportFormat: (format) => {
+    const { project, selectedTileId } = get();
+    const nextProject = {
+      ...project,
+      export: {
+        ...project.export,
+        format,
+      },
+    };
+    set(syncState(nextProject, selectedTileId));
+  },
+  setExportScale: (scale) => {
+    const { project, selectedTileId } = get();
+    const nextProject = {
+      ...project,
+      export: {
+        ...project.export,
+        scale: Math.max(0.25, Number.isFinite(scale) ? scale : project.export.scale),
+      },
+    };
+    set(syncState(nextProject, selectedTileId));
+  },
+  setWatermarkText: (value) => {
+    const { project, selectedTileId } = get();
+    const nextProject = {
+      ...project,
+      watermark: {
+        ...project.watermark,
+        text: {
+          value,
+          opacity: project.watermark.text?.opacity ?? 0.55,
+        },
+      },
+    };
+    set(syncState(nextProject, selectedTileId));
   },
   selectTile: (tileId) => set({ selectedTileId: tileId }),
   toggleTilePin: (tileId) => {
@@ -305,7 +411,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tile.id === tileId ? { ...tile, pinned: !tile.pinned } : tile,
       ),
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   fineTuneTile: (tileId, deltaMs) => {
     const nextProject = {
@@ -316,7 +422,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : tile,
       ),
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, get().selectedTileId));
   },
   setTileManualFrame: (tileId, frameIndex) => {
     const fps = get().project.video.fps ?? 24;
@@ -333,7 +439,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : tile,
       ),
     };
-    set(syncState(nextProject));
+    set(syncState(nextProject, tileId));
   },
   resizeTile: (tileId, rowSpan, columnSpan) => {
     const nextProject = {
@@ -358,7 +464,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ alert: { tone: "warning", message: overlapIssue.message } });
       return;
     }
-    set(syncState(nextProject));
+    set(syncState(nextProject, tileId));
   },
   runSharpestNeighbour: async () => {
     const { project, selectedTileId } = get();
@@ -382,7 +488,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const nextProject = await sharpestNeighbours(project, [selectedTileId]);
       set({
         busy: false,
-        ...syncState(nextProject),
+        ...syncState(nextProject, selectedTileId),
         alert: { tone: "info", message: "Updated the selected tile to the sharpest nearby frame." },
       });
     } catch (error) {
@@ -431,7 +537,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         previewFrame: null,
         previewBusy: false,
         previewError: null,
-        ...syncState(project),
+        ...syncState(project, get().selectedTileId),
         diagnostics,
         alert: { tone: "info", message: `Loaded project from ${path}` },
       });

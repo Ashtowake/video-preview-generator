@@ -14,6 +14,7 @@
 3. Run `Auto-fill grid` to distribute frames evenly inside the selected range.
 4. Pin or fine-tune individual tiles from the inspector.
 5. Resize tiles by changing their row or column span.
+6. Use the inspector to change grid size, gutter, margins, rounded corners, shadows, export format, scale, and watermark text.
 
 ## Editing Tiles
 

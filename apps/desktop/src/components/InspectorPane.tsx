@@ -8,6 +8,12 @@ export const InspectorPane = () => {
     project,
     selectedTileId,
     busy,
+    setGridDimensions,
+    setGridSpacing,
+    updateStyle,
+    setExportFormat,
+    setExportScale,
+    setWatermarkText,
     selectTile,
     toggleTilePin,
     fineTuneTile,
@@ -87,16 +93,147 @@ export const InspectorPane = () => {
 
       <div className="inspector-section">
         <h3>{copy.inspector.globalStyle}</h3>
-        <div className="stats-grid">
-          <span>{copy.inspector.rows} {project.grid.rows}</span>
-          <span>{copy.inspector.columns} {project.grid.columns}</span>
-          <span>{copy.inspector.roundedCorners} {project.style.frameRoundingPx}px</span>
-          <span>{copy.inspector.shadow} {project.style.frameShadowPx}px</span>
-          <span>{copy.inspector.gutter} {project.grid.gutterPx}px</span>
-          <span>{copy.inspector.margin} {project.grid.outerMarginPx}px</span>
-          <span>{copy.inspector.format} {project.export.format.toUpperCase()}</span>
-          <span>{copy.inspector.scale} {project.export.scale.toFixed(1)}x</span>
+        <div className="transport-grid">
+          <label>
+            <span>{copy.inspector.rows}</span>
+            <input
+              disabled={busy}
+              max={12}
+              min={1}
+              onChange={(event) => setGridDimensions(Number(event.currentTarget.value), project.grid.columns)}
+              type="number"
+              value={project.grid.rows}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.columns}</span>
+            <input
+              disabled={busy}
+              max={12}
+              min={1}
+              onChange={(event) => setGridDimensions(project.grid.rows, Number(event.currentTarget.value))}
+              type="number"
+              value={project.grid.columns}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.gutter}</span>
+            <input
+              disabled={busy}
+              min={0}
+              onChange={(event) => setGridSpacing(Number(event.currentTarget.value), project.grid.outerMarginPx)}
+              type="number"
+              value={project.grid.gutterPx}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.margin}</span>
+            <input
+              disabled={busy}
+              min={0}
+              onChange={(event) => setGridSpacing(project.grid.gutterPx, Number(event.currentTarget.value))}
+              type="number"
+              value={project.grid.outerMarginPx}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.roundedCorners}</span>
+            <input
+              disabled={busy}
+              min={0}
+              onChange={(event) => updateStyle({ frameRoundingPx: Number(event.currentTarget.value) })}
+              type="number"
+              value={project.style.frameRoundingPx}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.shadow}</span>
+            <input
+              disabled={busy}
+              min={0}
+              onChange={(event) => updateStyle({ frameShadowPx: Number(event.currentTarget.value) })}
+              type="number"
+              value={project.style.frameShadowPx}
+            />
+          </label>
+          <label>
+            <span>{copy.inspector.border}</span>
+            <input
+              disabled={busy}
+              min={0}
+              onChange={(event) => updateStyle({ frameBorderPx: Number(event.currentTarget.value) })}
+              type="number"
+              value={project.style.frameBorderPx}
+            />
+          </label>
         </div>
+        <div className="toggle-grid">
+          <label className="toggle-row">
+            <input
+              checked={project.style.showMetadataBar}
+              disabled={busy}
+              onChange={(event) => updateStyle({ showMetadataBar: event.currentTarget.checked })}
+              type="checkbox"
+            />
+            <span>{copy.inspector.metadataBar}</span>
+          </label>
+          <label className="toggle-row">
+            <input
+              checked={project.style.showTimestamps}
+              disabled={busy}
+              onChange={(event) => updateStyle({ showTimestamps: event.currentTarget.checked })}
+              type="checkbox"
+            />
+            <span>{copy.inspector.timestamps}</span>
+          </label>
+          <label className="toggle-row">
+            <input
+              checked={project.style.darkMode}
+              disabled={busy}
+              onChange={(event) => updateStyle({ darkMode: event.currentTarget.checked })}
+              type="checkbox"
+            />
+            <span>{copy.inspector.darkMode}</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="inspector-section">
+        <h3>{copy.inspector.exportSettings}</h3>
+        <div className="transport-grid">
+          <label>
+            <span>{copy.inspector.format}</span>
+            <select
+              disabled={busy}
+              onChange={(event) => setExportFormat(event.currentTarget.value as "png" | "jpeg")}
+              value={project.export.format}
+            >
+              <option value="png">PNG</option>
+              <option value="jpeg">JPEG</option>
+            </select>
+          </label>
+          <label>
+            <span>{copy.inspector.scale}</span>
+            <input
+              disabled={busy}
+              max={4}
+              min={0.25}
+              onChange={(event) => setExportScale(Number(event.currentTarget.value))}
+              step={0.1}
+              type="number"
+              value={project.export.scale}
+            />
+          </label>
+        </div>
+        <label>
+          <span>{copy.inspector.watermarkText}</span>
+          <input
+            disabled={busy}
+            onChange={(event) => setWatermarkText(event.currentTarget.value)}
+            type="text"
+            value={project.watermark.text?.value ?? ""}
+          />
+        </label>
       </div>
     </section>
   );

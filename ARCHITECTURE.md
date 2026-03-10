@@ -47,6 +47,7 @@ Contains:
 - React app shell and routing
 - Zustand editor store
 - visual editor panes and diagnostics/help surfaces
+- bounded preview-frame caching in the Tauri layer so repeated scrubs can reuse decoded frames
 
 ## Near-term Gaps
 

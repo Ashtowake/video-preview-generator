@@ -24,6 +24,7 @@ This repository now contains the first implementation pass of the rewrite:
 - FFmpeg/ffprobe-backed video probing, frame extraction, and contact-sheet rendering in `vpg-core`
 - Desktop save/load/export wiring through Tauri commands and native file dialogs
 - Rust-decoded still-frame preview in the desktop media pane for seek and frame-step accuracy
+- Bounded desktop preview-frame caching in the Tauri shell to reduce repeated decode work while scrubbing
 - Sharpness-neighbour analysis for selected manual tiles in the desktop editor
 - Documentation and CI scaffolding for the new workspace
 

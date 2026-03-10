@@ -1,6 +1,40 @@
 import type { GridSettings, ProjectTile, TileSelection, ValidationIssue } from "./types";
 import { centerOfBinSamples } from "./seek";
 
+/**
+ * Rebuilds the tile list for a new grid size while preserving per-tile selection state where
+ * possible.
+ *
+ * Spans are reset to `1x1` because larger spans are often invalid after a row/column change.
+ */
+export const reshapeTilesForGrid = (
+  tiles: ProjectTile[],
+  rows: number,
+  columns: number,
+): ProjectTile[] => {
+  const safeRows = Math.max(1, Math.round(rows));
+  const safeColumns = Math.max(1, Math.round(columns));
+  const totalTiles = safeRows * safeColumns;
+
+  return Array.from({ length: totalTiles }, (_, index) => {
+    const existing = tiles[index];
+
+    return {
+      id: existing?.id ?? `tile-${index}`,
+      order: index,
+      span: {
+        row: Math.floor(index / safeColumns),
+        column: index % safeColumns,
+        rowSpan: 1,
+        columnSpan: 1,
+      },
+      selection: existing?.selection ?? { kind: "auto" },
+      pinned: existing?.pinned ?? false,
+      fineTuneOffsetMs: existing?.fineTuneOffsetMs ?? 0,
+    };
+  });
+};
+
 export const autoFillTiles = (
   tiles: ProjectTile[],
   rangeStartMs: number,

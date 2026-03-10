@@ -4,6 +4,14 @@ import { validateGridSpans } from "./grid";
 export const validateProject = (project: ProjectFile): ValidationIssue[] => {
   const issues: ValidationIssue[] = [];
 
+  if (project.grid.rows < 1 || project.grid.columns < 1) {
+    issues.push({
+      level: "error",
+      path: "grid",
+      message: "Grid rows and columns must both be at least 1.",
+    });
+  }
+
   if (project.range.endMs <= project.range.startMs) {
     issues.push({
       level: "error",
