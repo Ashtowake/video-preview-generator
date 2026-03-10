@@ -180,12 +180,14 @@ label {
 }
 
 .video-frame video,
+.video-frame img,
 .video-frame__empty {
   width: 100%;
   height: 100%;
 }
 
-.video-frame video {
+.video-frame video,
+.video-frame img {
   object-fit: contain;
 }
 

@@ -22,6 +22,12 @@
 3. Update docs for user-facing changes.
 4. Keep commits focused by subsystem.
 
+## API Documentation
+
+- Generate Rust API docs with `npm run docs:api:rust` or `cargo doc --no-deps -p vpg-core -p vpg-cli`.
+- Generate TypeScript API docs with `npm run docs:api:ts`.
+- Use doc comments to explain purpose, invariants, and edge cases. Avoid narrating obvious syntax.
+
 ## Git Hygiene
 
 - Use topic branches for features and fixes.

@@ -44,13 +44,21 @@ interface Catalog {
     validationIssues: string;
     quickPreview: string;
     fullFidelity: string;
+    loadProject: string;
+    saveProject: string;
+    exportSheet: string;
+    busy: string;
   };
   media: {
     eyebrow: string;
     title: string;
     importVideo: string;
+    browseVideo: string;
     emptyState: string;
     emptyHint: string;
+    backendPreviewHint: string;
+    loadingPreview: string;
+    previewAlt: string;
     playhead: string;
     rangeStart: string;
     rangeEnd: string;
@@ -138,14 +146,22 @@ const en: Catalog = {
     validationIssues: "validation issue(s)",
     quickPreview: "Quick Preview",
     fullFidelity: "Full Fidelity",
+    loadProject: "Load Project",
+    saveProject: "Save Project",
+    exportSheet: "Export Sheet",
+    busy: "Working",
   },
   media: {
     eyebrow: "Media & Range",
     title: "Preview transport",
     importVideo: "Import video",
+    browseVideo: "Browse video",
     emptyState: "Load a local video to preview transport and range controls.",
     emptyHint:
       "The browser shell uses an object URL now. The Tauri build can later swap to backend-driven decode.",
+    backendPreviewHint: "The desktop app decodes the visible preview through the Rust backend.",
+    loadingPreview: "Refreshing preview frame...",
+    previewAlt: "Current decoded preview frame",
     playhead: "Playhead",
     rangeStart: "Range start",
     rangeEnd: "Range end",
@@ -316,14 +332,22 @@ const de: Catalog = {
     validationIssues: "Validierungsproblem(e)",
     quickPreview: "Schnellvorschau",
     fullFidelity: "Volle Genauigkeit",
+    loadProject: "Projekt laden",
+    saveProject: "Projekt speichern",
+    exportSheet: "Bogen exportieren",
+    busy: "Beschäftigt",
   },
   media: {
     eyebrow: "Medien & Bereich",
     title: "Vorschau-Steuerung",
     importVideo: "Video importieren",
+    browseVideo: "Video auswählen",
     emptyState: "Lokales Video laden, um Vorschau- und Bereichssteuerung zu testen.",
     emptyHint:
       "Die Browser-Shell nutzt aktuell eine Objekt-URL. Im Tauri-Build kann das später durch Backend-Decoding ersetzt werden.",
+    backendPreviewHint: "Die Desktop-App dekodiert die sichtbare Vorschau über das Rust-Backend.",
+    loadingPreview: "Vorschaubild wird aktualisiert...",
+    previewAlt: "Aktuell dekodiertes Vorschaubild",
     playhead: "Abspielposition",
     rangeStart: "Bereichsbeginn",
     rangeEnd: "Bereichsende",

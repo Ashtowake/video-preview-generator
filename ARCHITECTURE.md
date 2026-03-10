@@ -17,7 +17,8 @@ Owns:
 - grid and tile layout rules
 - validation
 - diagnostics manifest generation
-- command-facing service interfaces for future FFmpeg-backed decode and export
+- FFmpeg/ffprobe-backed probing, frame extraction, sharpness search, and contact-sheet export
+- command-facing service interfaces shared by the CLI and Tauri desktop shell
 
 ### `crates/vpg-cli`
 
@@ -49,6 +50,6 @@ Contains:
 
 ## Near-term Gaps
 
-- FFmpeg sidecar execution is still behind a stub service boundary.
-- Final sheet rendering is not wired to a real raster pipeline yet.
-- Updater and diagnostics are scaffolded as UI and command placeholders pending platform-specific packaging.
+- Desktop playback is now backed by Rust-decoded still previews, but continuous playback is still not a Rust-managed stream surface.
+- Caching, chunked analysis jobs, and packaged FFmpeg sidecars still need production hardening.
+- Updater, diagnostics export polish, and release packaging remain pending platform-specific work.

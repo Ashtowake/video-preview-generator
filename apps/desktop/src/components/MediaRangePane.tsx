@@ -2,16 +2,25 @@ import { estimateFullFidelity, formatTimeMs } from "@video-preview/domain";
 import { useEffect, useRef } from "react";
 
 import { useI18n } from "../i18n/provider";
+import { isDesktopRuntime, openVideoDialog } from "../lib/backend";
 import { useEditorStore } from "../store/editorStore";
 
 export const MediaRangePane = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const desktopRuntime = isDesktopRuntime();
   const {
     project,
     loadedVideoUrl,
     loadedVideoSizeBytes,
+    previewFrame,
+    previewBusy,
+    previewError,
     alert,
+    busy,
     setLoadedVideo,
+    loadVideoFromPath,
+    refreshPreviewFrame,
     setDurationMs,
     setPlayheadMs,
     setRangeStart,
@@ -30,12 +39,24 @@ export const MediaRangePane = () => {
   const decodeEstimate = estimateFullFidelity(project, loadedVideoSizeBytes);
 
   useEffect(() => {
-    if (!videoRef.current) {
+    if (desktopRuntime || !videoRef.current) {
       return;
     }
 
     videoRef.current.currentTime = project.playback.playheadMs / 1000;
-  }, [project.playback.playheadMs]);
+  }, [desktopRuntime, project.playback.playheadMs]);
+
+  useEffect(() => {
+    if (!desktopRuntime || !project.video.path || project.video.path === "unloaded-video.mp4") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshPreviewFrame();
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [desktopRuntime, project.playback.playheadMs, project.video.path, refreshPreviewFrame]);
 
   return (
     <section className="panel">
@@ -44,23 +65,51 @@ export const MediaRangePane = () => {
           <p className="eyebrow">{copy.media.eyebrow}</p>
           <h2>{copy.media.title}</h2>
         </div>
-        <label className="file-input">
-          <input
-            accept="video/*"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) {
-                setLoadedVideo(file);
-              }
-            }}
-            type="file"
-          />
-          {copy.media.importVideo}
-        </label>
+        <input
+          accept="video/*"
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) {
+              setLoadedVideo(file);
+            }
+            event.currentTarget.value = "";
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+        <button
+          onClick={() => {
+            if (desktopRuntime) {
+              void (async () => {
+                const path = await openVideoDialog();
+                if (path) {
+                  await loadVideoFromPath(path);
+                }
+              })();
+              return;
+            }
+
+            fileInputRef.current?.click();
+          }}
+          type="button"
+          disabled={busy}
+        >
+          {desktopRuntime ? copy.media.browseVideo : copy.media.importVideo}
+        </button>
       </div>
 
       <div className="video-frame">
-        {loadedVideoUrl ? (
+        {desktopRuntime ? (
+          previewFrame ? (
+            <img alt={copy.media.previewAlt} src={previewFrame.dataUrl} />
+          ) : (
+            <div className="video-frame__empty">
+              <p>{previewBusy ? copy.media.loadingPreview : copy.media.emptyState}</p>
+              <p className="muted">{previewError ?? copy.media.backendPreviewHint}</p>
+            </div>
+          )
+        ) : loadedVideoUrl ? (
           <video
             controls={false}
             onLoadedMetadata={(event) => {
@@ -83,6 +132,7 @@ export const MediaRangePane = () => {
         <label>
           <span>{copy.media.playhead}</span>
           <input
+            disabled={busy || !loadedVideoUrl}
             max={durationMs}
             min={0}
             onChange={(event) => setPlayheadMs(Number(event.currentTarget.value))}
@@ -94,6 +144,7 @@ export const MediaRangePane = () => {
           <label>
             <span>{copy.media.rangeStart}</span>
             <input
+              disabled={busy || !loadedVideoUrl}
               max={Math.max(project.range.endMs - 250, 0)}
               min={0}
               onChange={(event) => setRangeStart(Number(event.currentTarget.value))}
@@ -104,6 +155,7 @@ export const MediaRangePane = () => {
           <label>
             <span>{copy.media.rangeEnd}</span>
             <input
+              disabled={busy || !loadedVideoUrl}
               max={durationMs}
               min={project.range.startMs + 250}
               onChange={(event) => setRangeEnd(Number(event.currentTarget.value))}
@@ -126,6 +178,7 @@ export const MediaRangePane = () => {
           <span>{copy.media.customJump}</span>
           <input
             defaultValue={formatTimeMs(project.playback.customSkipMs)}
+            disabled={busy}
             onBlur={(event) => setCustomSkip(event.currentTarget.value)}
             type="text"
           />
@@ -133,6 +186,7 @@ export const MediaRangePane = () => {
         <label>
           <span>{copy.media.frameStep}</span>
           <input
+            disabled={busy}
             min={1}
             onChange={(event) => setFrameStep(Number(event.currentTarget.value))}
             type="number"
@@ -142,14 +196,14 @@ export const MediaRangePane = () => {
       </div>
 
       <div className="button-row">
-        <button onClick={() => stepCustom(-1)} type="button">{copy.media.stepCustomBack}</button>
-        <button onClick={() => stepCustom(1)} type="button">{copy.media.stepCustomForward}</button>
-        <button onClick={() => stepSeconds(5, -1)} type="button">{copy.media.stepFiveBack}</button>
-        <button onClick={() => stepSeconds(5, 1)} type="button">{copy.media.stepFiveForward}</button>
-        <button onClick={() => stepSeconds(1, -1)} type="button">{copy.media.stepOneBack}</button>
-        <button onClick={() => stepSeconds(1, 1)} type="button">{copy.media.stepOneForward}</button>
-        <button onClick={() => stepFrames(-1)} type="button">{copy.media.stepFrameBack}</button>
-        <button onClick={() => stepFrames(1)} type="button">{copy.media.stepFrameForward}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepCustom(-1)} type="button">{copy.media.stepCustomBack}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepCustom(1)} type="button">{copy.media.stepCustomForward}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepSeconds(5, -1)} type="button">{copy.media.stepFiveBack}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepSeconds(5, 1)} type="button">{copy.media.stepFiveForward}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepSeconds(1, -1)} type="button">{copy.media.stepOneBack}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepSeconds(1, 1)} type="button">{copy.media.stepOneForward}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepFrames(-1)} type="button">{copy.media.stepFrameBack}</button>
+        <button disabled={busy || !loadedVideoUrl} onClick={() => stepFrames(1)} type="button">{copy.media.stepFrameForward}</button>
       </div>
 
       <div className="mode-card">
@@ -163,6 +217,7 @@ export const MediaRangePane = () => {
         <div className="button-row">
           <button
             className={project.analysisMode === "quick_preview" ? "button--active" : ""}
+            disabled={busy}
             onClick={() => setAnalysisMode("quick_preview")}
             type="button"
           >
@@ -170,15 +225,17 @@ export const MediaRangePane = () => {
           </button>
           <button
             className={project.analysisMode === "full_fidelity" ? "button--active" : ""}
+            disabled={busy}
             onClick={() => setAnalysisMode("full_fidelity")}
             type="button"
           >
             {copy.editor.fullFidelity}
           </button>
-          <button onClick={autoFill} type="button">{copy.media.autoFill}</button>
+          <button disabled={busy || !loadedVideoUrl} onClick={autoFill} type="button">{copy.media.autoFill}</button>
         </div>
       </div>
 
+      {desktopRuntime && previewBusy ? <p className="muted">{copy.media.loadingPreview}</p> : null}
       {alert ? <p className={`notice notice--${alert.tone}`}>{alert.message}</p> : null}
     </section>
   );

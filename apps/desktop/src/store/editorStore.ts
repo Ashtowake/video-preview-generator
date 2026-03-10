@@ -1,3 +1,9 @@
+/**
+ * Central editor state for the desktop app.
+ *
+ * Presentational React components read from this store and dispatch actions, while media I/O stays
+ * behind the backend wrappers and pure project math stays in `@video-preview/domain`.
+ */
 import {
   autoFillTiles,
   buildDiagnosticsBundle,
@@ -11,20 +17,40 @@ import {
   validateProject,
   type AnalysisMode,
   type DiagnosticsBundle,
+  type PreviewFrame,
   type ProjectFile,
 } from "@video-preview/domain";
 import { create } from "zustand";
 
-type EditorAlert = { tone: "info" | "warning"; message: string } | null;
+import {
+  diagnosticsBundle,
+  exportProject,
+  fetchPreviewFrame,
+  isDesktopRuntime,
+  loadProject,
+  probeVideo,
+  projectFileUrl,
+  saveProject,
+  sharpestNeighbours,
+} from "../lib/backend";
 
-interface EditorState {
+/** User-facing notification surfaced in the editor panes. */
+export type EditorAlert = { tone: "info" | "warning"; message: string } | null;
+
+/** Public store contract for editor actions and derived state. */
+export interface EditorState {
   project: ProjectFile;
   selectedTileId: string | null;
   loadedVideoUrl: string | null;
   loadedVideoSizeBytes: number;
+  previewFrame: PreviewFrame | null;
+  previewBusy: boolean;
+  previewError: string | null;
   alert: EditorAlert;
   diagnostics: DiagnosticsBundle;
+  busy: boolean;
   setLoadedVideo: (file: File) => void;
+  loadVideoFromPath: (path: string) => Promise<void>;
   setDurationMs: (durationMs: number) => void;
   setPlayheadMs: (playheadMs: number) => void;
   setRangeStart: (startMs: number) => void;
@@ -41,20 +67,43 @@ interface EditorState {
   fineTuneTile: (tileId: string, deltaMs: number) => void;
   setTileManualFrame: (tileId: string, frameIndex: number) => void;
   resizeTile: (tileId: string, rowSpan: number, columnSpan: number) => void;
-  runSharpestNeighbour: () => void;
+  runSharpestNeighbour: () => Promise<void>;
+  saveProjectToPath: (path: string) => Promise<void>;
+  loadProjectFromPath: (path: string) => Promise<void>;
+  exportProjectToPath: (path?: string) => Promise<string | null>;
+  refreshPreviewFrame: (maxWidth?: number) => Promise<void>;
 }
 
 const starterProject = createStarterProject();
+let previewRequestSequence = 0;
 
-const syncDiagnostics = (project: ProjectFile): DiagnosticsBundle => buildDiagnosticsBundle(project);
+/** Keeps browser-only diagnostics available when the Rust shell is not active. */
+const localDiagnostics = (project: ProjectFile): DiagnosticsBundle => buildDiagnosticsBundle(project);
 
+/** Recomputes derived store fields after any project mutation. */
+const syncState = (project: ProjectFile) => ({
+  project,
+  diagnostics: localDiagnostics(project),
+  selectedTileId: project.tiles[0]?.id ?? null,
+});
+
+/**
+ * Zustand hook for all editor state.
+ *
+ * The store is intentionally action-heavy: validation, range math, and backend calls are kept
+ * here so React components stay close to declarative view code.
+ */
 export const useEditorStore = create<EditorState>((set, get) => ({
   project: starterProject,
   selectedTileId: starterProject.tiles[0]?.id ?? null,
   loadedVideoUrl: null,
   loadedVideoSizeBytes: 0,
+  previewFrame: null,
+  previewBusy: false,
+  previewError: null,
   alert: null,
-  diagnostics: syncDiagnostics(starterProject),
+  diagnostics: localDiagnostics(starterProject),
+  busy: false,
   setLoadedVideo: (file) => {
     const nextProject = {
       ...get().project,
@@ -67,18 +116,48 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       loadedVideoUrl: URL.createObjectURL(file),
       loadedVideoSizeBytes: file.size,
-      project: nextProject,
-      diagnostics: syncDiagnostics(nextProject),
+      previewFrame: null,
+      previewBusy: false,
+      previewError: null,
+      ...syncState(nextProject),
       alert: { tone: "info", message: `Loaded ${file.name}` },
     });
+  },
+  loadVideoFromPath: async (path) => {
+    set({ busy: true, alert: null, previewFrame: null, previewBusy: false, previewError: null });
+    try {
+      const project = await probeVideo(path);
+      set({
+        busy: false,
+        loadedVideoUrl: projectFileUrl(path),
+        loadedVideoSizeBytes: 0,
+        previewFrame: null,
+        previewBusy: false,
+        previewError: null,
+        ...syncState(project),
+        alert: { tone: "info", message: `Loaded ${path}` },
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        alert: {
+          tone: "warning",
+          message: error instanceof Error ? error.message : "Failed to load video.",
+        },
+      });
+    }
   },
   setDurationMs: (durationMs) => {
     const nextProject = {
       ...get().project,
-      video: { ...get().project.video, durationMs },
+      video: {
+        ...get().project.video,
+        durationMs,
+        frameCount: Math.round((durationMs / 1000) * (get().project.video.fps ?? 24)),
+      },
       range: { ...get().project.range, endMs: durationMs },
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   setPlayheadMs: (playheadMs) => {
     const durationMs = get().project.video.durationMs ?? 60_000;
@@ -92,7 +171,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         activeFrameIndex: Math.round((nextPlayheadMs / 1000) * fps),
       },
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   setRangeStart: (startMs) => {
     const { project } = get();
@@ -103,7 +182,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         endMs: project.range.endMs,
       },
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   setRangeEnd: (endMs) => {
     const { project } = get();
@@ -115,7 +194,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         endMs: Math.max(Math.min(endMs, durationMs), project.range.startMs + 250),
       },
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   setCustomSkip: (value) => {
     try {
@@ -125,8 +204,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         playback: { ...get().project.playback, customSkipMs },
       };
       set({
-        project: nextProject,
-        diagnostics: syncDiagnostics(nextProject),
+        ...syncState(nextProject),
         alert: { tone: "info", message: `Custom jump set to ${formatTimeMs(customSkipMs)}` },
       });
     } catch (error) {
@@ -146,17 +224,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         frameStep: Math.max(1, Math.round(step)),
       },
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   stepCustom: (direction) => {
     const { project } = get();
     const durationMs = project.video.durationMs ?? 60_000;
-    get().setPlayheadMs(stepByTime(project.playback.playheadMs, project.playback.customSkipMs * direction, durationMs));
+    get().setPlayheadMs(
+      stepByTime(
+        project.playback.playheadMs,
+        project.playback.customSkipMs * direction,
+        durationMs,
+      ),
+    );
   },
   stepSeconds: (seconds, direction) => {
     const { project } = get();
     const durationMs = project.video.durationMs ?? 60_000;
-    get().setPlayheadMs(stepByTime(project.playback.playheadMs, seconds * 1000 * direction, durationMs));
+    get().setPlayheadMs(
+      stepByTime(project.playback.playheadMs, seconds * 1000 * direction, durationMs),
+    );
   },
   stepFrames: (direction) => {
     const { project } = get();
@@ -173,6 +259,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setAnalysisMode: (mode) => {
     const { project, loadedVideoSizeBytes } = get();
     if (mode === "full_fidelity") {
+      // Browser-loaded object URLs only know the local file size, so the estimate remains coarse.
       const estimate = estimateFullFidelity(project, loadedVideoSizeBytes);
       if (!estimate.canUpgradeToFullFidelity) {
         set({
@@ -187,13 +274,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const nextProject = { ...project, analysisMode: mode };
     set({
-      project: nextProject,
-      diagnostics: syncDiagnostics(nextProject),
+      ...syncState(nextProject),
       alert: {
         tone: "info",
         message:
           mode === "full_fidelity"
-            ? "Full fidelity mode enabled. Exact frame tools can be wired to the backend."
+            ? "Full fidelity mode enabled."
             : "Quick preview mode keeps memory and cache use low.",
       },
     });
@@ -202,9 +288,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { project } = get();
     const nextProject = {
       ...project,
-      tiles: autoFillTiles(project.tiles, project.range.startMs, project.range.endMs, project.video.fps),
+      tiles: autoFillTiles(
+        project.tiles,
+        project.range.startMs,
+        project.range.endMs,
+        project.video.fps,
+      ),
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   selectTile: (tileId) => set({ selectedTileId: tileId }),
   toggleTilePin: (tileId) => {
@@ -214,16 +305,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tile.id === tileId ? { ...tile, pinned: !tile.pinned } : tile,
       ),
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   fineTuneTile: (tileId, deltaMs) => {
     const nextProject = {
       ...get().project,
       tiles: get().project.tiles.map((tile) =>
-        tile.id === tileId ? { ...tile, fineTuneOffsetMs: tile.fineTuneOffsetMs + deltaMs } : tile,
+        tile.id === tileId
+          ? { ...tile, fineTuneOffsetMs: tile.fineTuneOffsetMs + deltaMs }
+          : tile,
       ),
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   setTileManualFrame: (tileId, frameIndex) => {
     const fps = get().project.video.fps ?? 24;
@@ -240,7 +333,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : tile,
       ),
     };
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
   resizeTile: (tileId, rowSpan, columnSpan) => {
     const nextProject = {
@@ -259,49 +352,155 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ),
     };
     const issues = validateProject(nextProject);
+    // Reject invalid spans before mutating the store so the UI never enters an overlapping state.
     const overlapIssue = issues.find((issue) => issue.path === `tiles.${tileId}`);
     if (overlapIssue) {
       set({ alert: { tone: "warning", message: overlapIssue.message } });
       return;
     }
-    set({ project: nextProject, diagnostics: syncDiagnostics(nextProject) });
+    set(syncState(nextProject));
   },
-  runSharpestNeighbour: () => {
+  runSharpestNeighbour: async () => {
     const { project, selectedTileId } = get();
     if (!selectedTileId) {
       set({ alert: { tone: "warning", message: "Select a tile first." } });
       return;
     }
 
-    const windowSize = project.grid.defaultSharpnessWindow;
-    const nextProject = {
-      ...project,
-      tiles: project.tiles.map((tile) => {
-        if (tile.id !== selectedTileId || tile.selection.kind !== "manual") {
-          return tile;
-        }
+    if (!isDesktopRuntime()) {
+      set({
+        alert: {
+          tone: "warning",
+          message: "Sharpness analysis requires the Tauri runtime.",
+        },
+      });
+      return;
+    }
 
-        // Placeholder heuristic until the FFmpeg-backed sharpness scan lands.
-        const nudgedFrame = tile.selection.frameIndex + Math.max(1, Math.round(windowSize / 3));
-        return {
-          ...tile,
-          selection: {
-            kind: "manual" as const,
-            frameIndex: nudgedFrame,
-            timeMs: Math.round((nudgedFrame / (project.video.fps ?? 24)) * 1000),
-          },
-        };
-      }),
-    };
+    set({ busy: true, alert: null });
+    try {
+      const nextProject = await sharpestNeighbours(project, [selectedTileId]);
+      set({
+        busy: false,
+        ...syncState(nextProject),
+        alert: { tone: "info", message: "Updated the selected tile to the sharpest nearby frame." },
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        alert: {
+          tone: "warning",
+          message:
+            error instanceof Error ? error.message : "Sharpness analysis failed.",
+        },
+      });
+    }
+  },
+  saveProjectToPath: async (path) => {
+    set({ busy: true, alert: null });
+    try {
+      await saveProject(path, get().project);
+      const diagnostics = isDesktopRuntime()
+        ? await diagnosticsBundle(get().project)
+        : localDiagnostics(get().project);
+      set({
+        busy: false,
+        diagnostics,
+        alert: { tone: "info", message: `Saved project to ${path}` },
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        alert: {
+          tone: "warning",
+          message: error instanceof Error ? error.message : "Failed to save project.",
+        },
+      });
+    }
+  },
+  loadProjectFromPath: async (path) => {
+    set({ busy: true, alert: null });
+    try {
+      const project = await loadProject(path);
+      const diagnostics = isDesktopRuntime()
+        ? await diagnosticsBundle(project)
+        : localDiagnostics(project);
+      set({
+        busy: false,
+        loadedVideoUrl: project.video.path ? projectFileUrl(project.video.path) : null,
+        previewFrame: null,
+        previewBusy: false,
+        previewError: null,
+        ...syncState(project),
+        diagnostics,
+        alert: { tone: "info", message: `Loaded project from ${path}` },
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        alert: {
+          tone: "warning",
+          message: error instanceof Error ? error.message : "Failed to load project.",
+        },
+      });
+    }
+  },
+  exportProjectToPath: async (path) => {
+    set({ busy: true, alert: null });
+    try {
+      const result = await exportProject(get().project, path);
+      set({
+        busy: false,
+        alert: { tone: "info", message: `Exported sheet to ${result.outputPath}` },
+      });
+      return result.outputPath;
+    } catch (error) {
+      set({
+        busy: false,
+        alert: {
+          tone: "warning",
+          message: error instanceof Error ? error.message : "Export failed.",
+        },
+      });
+      return null;
+    }
+  },
+  refreshPreviewFrame: async (maxWidth = 960) => {
+    if (!isDesktopRuntime()) {
+      set({ previewFrame: null, previewBusy: false, previewError: null });
+      return;
+    }
 
-    set({
-      project: nextProject,
-      diagnostics: syncDiagnostics(nextProject),
-      alert: {
-        tone: "warning",
-        message:
-          "Sharpest neighbour currently uses a temporary heuristic. Wire the FFmpeg-backed analyzer next.",
-      },
-    });
+    const { project } = get();
+    if (!project.video.path || project.video.path === "unloaded-video.mp4") {
+      set({ previewFrame: null, previewBusy: false, previewError: null });
+      return;
+    }
+
+    const requestId = previewRequestSequence + 1;
+    previewRequestSequence = requestId;
+    set({ previewBusy: true, previewError: null });
+
+    try {
+      const previewFrame = await fetchPreviewFrame(project, project.playback.playheadMs, maxWidth);
+      if (requestId !== previewRequestSequence) {
+        return;
+      }
+
+      set({
+        previewFrame,
+        previewBusy: false,
+        previewError: null,
+      });
+    } catch (error) {
+      if (requestId !== previewRequestSequence) {
+        return;
+      }
+
+      set({
+        previewBusy: false,
+        previewError: error instanceof Error ? error.message : "Failed to refresh preview.",
+      });
+    }
   },
 }));

@@ -7,6 +7,7 @@ export const InspectorPane = () => {
   const {
     project,
     selectedTileId,
+    busy,
     selectTile,
     toggleTilePin,
     fineTuneTile,
@@ -29,7 +30,7 @@ export const InspectorPane = () => {
 
       <div className="inspector-section">
         <h3>{copy.inspector.selectedTile}</h3>
-        <select onChange={(event) => selectTile(event.currentTarget.value)} value={selectedTile?.id}>
+        <select disabled={busy} onChange={(event) => selectTile(event.currentTarget.value)} value={selectedTile?.id}>
           {project.tiles.map((tile) => (
             <option key={tile.id} value={tile.id}>
               {tile.id}
@@ -43,19 +44,20 @@ export const InspectorPane = () => {
               <span>{copy.inspector.fineTune} {formatTimeMs(Math.abs(selectedTile.fineTuneOffsetMs))}</span>
             </div>
             <div className="button-row">
-              <button onClick={() => toggleTilePin(selectedTile.id)} type="button">
+              <button disabled={busy} onClick={() => toggleTilePin(selectedTile.id)} type="button">
                 {selectedTile.pinned ? copy.inspector.unpin : copy.inspector.pin}
               </button>
-              <button onClick={() => fineTuneTile(selectedTile.id, -500)} type="button">
+              <button disabled={busy} onClick={() => fineTuneTile(selectedTile.id, -500)} type="button">
                 -500 ms
               </button>
-              <button onClick={() => fineTuneTile(selectedTile.id, 500)} type="button">
+              <button disabled={busy} onClick={() => fineTuneTile(selectedTile.id, 500)} type="button">
                 +500 ms
               </button>
             </div>
             <label>
               <span>{copy.inspector.manualFrame}</span>
               <input
+                disabled={busy}
                 min={0}
                 onChange={(event) => setTileManualFrame(selectedTile.id, Number(event.currentTarget.value))}
                 type="number"
@@ -64,18 +66,20 @@ export const InspectorPane = () => {
             </label>
             <div className="button-row">
               <button
+                disabled={busy}
                 onClick={() => resizeTile(selectedTile.id, selectedTile.span.rowSpan + 1, selectedTile.span.columnSpan)}
                 type="button"
               >
                 {copy.inspector.taller}
               </button>
               <button
+                disabled={busy}
                 onClick={() => resizeTile(selectedTile.id, selectedTile.span.rowSpan, selectedTile.span.columnSpan + 1)}
                 type="button"
               >
                 {copy.inspector.wider}
               </button>
-              <button onClick={runSharpestNeighbour} type="button">{copy.inspector.sharpestNeighbour}</button>
+              <button disabled={busy} onClick={() => void runSharpestNeighbour()} type="button">{copy.inspector.sharpestNeighbour}</button>
             </div>
           </>
         ) : null}

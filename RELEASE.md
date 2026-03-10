@@ -8,7 +8,8 @@
 
 ## Current State
 
-The release pipeline is scaffolded but not yet fully wired for signing, notarization, or updater publishing.
+- The desktop app, CLI, and Rust core can now probe videos and render contact sheets locally.
+- Release hardening is still pending for signing, notarization, bundled sidecars, updater publishing, and platform packaging.
 
 ## Planned Steps
 

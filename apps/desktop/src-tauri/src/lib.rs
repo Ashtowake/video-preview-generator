@@ -1,7 +1,9 @@
 use std::fs;
 
 use tauri::Manager;
-use vpg_core::{DiagnosticsBundle, ProjectFile, StubMediaService};
+use vpg_core::{
+    DiagnosticsBundle, ExportResult, MediaService, PreviewFrame, ProjectFile, RenderPlan,
+};
 
 #[tauri::command]
 fn starter_project(video_path: Option<String>) -> ProjectFile {
@@ -21,8 +23,36 @@ fn load_project(path: String) -> Result<ProjectFile, String> {
 }
 
 #[tauri::command]
+fn probe_video(video_path: String) -> Result<ProjectFile, String> {
+    MediaService
+        .load_video_project(&video_path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn estimate_full_fidelity(project: ProjectFile) -> vpg_core::DecodeEstimate {
-    StubMediaService.estimate_full_fidelity(&project)
+    MediaService.estimate_full_fidelity(&project)
+}
+
+#[tauri::command]
+fn preview_frame(
+    project: ProjectFile,
+    time_ms: u64,
+    max_width: Option<u32>,
+) -> Result<PreviewFrame, String> {
+    MediaService
+        .preview_frame(&project, time_ms, max_width.unwrap_or(640))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn find_sharpest_neighbours(
+    project: ProjectFile,
+    tile_ids: Vec<String>,
+) -> Result<ProjectFile, String> {
+    MediaService
+        .find_sharpest_neighbours(&project, &tile_ids)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -31,8 +61,18 @@ fn diagnostics_bundle(project: ProjectFile) -> DiagnosticsBundle {
 }
 
 #[tauri::command]
-fn render_plan(project: ProjectFile) -> vpg_core::RenderPlan {
-    StubMediaService.render_plan(&project)
+fn render_plan(project: ProjectFile) -> RenderPlan {
+    MediaService.render_plan(&project)
+}
+
+#[tauri::command]
+fn export_project(
+    project: ProjectFile,
+    output_path: Option<String>,
+) -> Result<ExportResult, String> {
+    MediaService
+        .export_sheet(&project, output_path.as_deref())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -40,8 +80,7 @@ fn release_notes() -> Vec<String> {
     vec![
         "Workspace rewrite scaffold with Rust core, CLI, and desktop shell.".to_string(),
         "Media/range pane now includes transport controls and import mode surfaces.".to_string(),
-        "FFmpeg-backed decode, sharpness analysis, and final export remain the next milestone."
-            .to_string(),
+        "Stage 2 adds real ffprobe/ffmpeg probing, sharpness search, and sheet export.".to_string(),
     ]
 }
 
@@ -60,11 +99,15 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             starter_project,
+            probe_video,
             save_project,
             load_project,
             estimate_full_fidelity,
+            preview_frame,
+            find_sharpest_neighbours,
             diagnostics_bundle,
             render_plan,
+            export_project,
             release_notes
         ])
         .run(tauri::generate_context!())

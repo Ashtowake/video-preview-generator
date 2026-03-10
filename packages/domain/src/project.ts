@@ -63,6 +63,7 @@ export const createStarterProject = (videoPath = "unloaded-video.mp4"): ProjectF
       path: videoPath,
       durationMs: 60_000,
       fps: 24,
+      frameCount: 1_440,
       width: 1920,
       height: 1080,
     },

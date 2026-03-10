@@ -27,6 +27,24 @@ Each tile stores:
 - a `pinned` flag
 - a `fineTuneOffsetMs` value
 
+Manual selections are serialized as:
+
+```json
+{
+  "kind": "manual",
+  "frameIndex": 42,
+  "timeMs": 1750
+}
+```
+
+Automatic selections are serialized as:
+
+```json
+{
+  "kind": "auto"
+}
+```
+
 ## Stability Notes
 
 - The project file is language-neutral.

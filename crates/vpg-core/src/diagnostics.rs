@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::project::ProjectFile;
+use crate::project::{AnalysisMode, ProjectFile};
 
 /// A lightweight manifest that can later be written alongside logs and cache metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -25,7 +25,7 @@ impl DiagnosticsBundle {
     pub fn from_project(project: &ProjectFile, cache_directory: impl Into<String>) -> Self {
         Self {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
-            analysis_mode: format!("{:?}", project.analysis_mode),
+            analysis_mode: analysis_mode_label(project.analysis_mode),
             video_path: project.video.path.clone(),
             cache_directory: cache_directory.into(),
             notices: vec![
@@ -41,5 +41,12 @@ impl DiagnosticsBundle {
                 },
             ],
         }
+    }
+}
+
+fn analysis_mode_label(mode: AnalysisMode) -> String {
+    match mode {
+        AnalysisMode::QuickPreview => "quick_preview".to_string(),
+        AnalysisMode::FullFidelity => "full_fidelity".to_string(),
     }
 }

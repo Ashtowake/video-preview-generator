@@ -20,10 +20,14 @@ This repository now contains the first implementation pass of the rewrite:
 - A typed project model in Rust and TypeScript
 - Editor state and transport controls in the new desktop frontend
 - Ship-ready application shell sections such as About, Credits, Help, Diagnostics, and Third-Party Notices
-- A Rust CLI scaffold with `inspect`, `export`, and `batch` commands
+- A Rust CLI with working `inspect` and `export` commands backed by the Rust core
+- FFmpeg/ffprobe-backed video probing, frame extraction, and contact-sheet rendering in `vpg-core`
+- Desktop save/load/export wiring through Tauri commands and native file dialogs
+- Rust-decoded still-frame preview in the desktop media pane for seek and frame-step accuracy
+- Sharpness-neighbour analysis for selected manual tiles in the desktop editor
 - Documentation and CI scaffolding for the new workspace
 
-The FFmpeg-backed decode and render pipeline is scaffolded behind stable interfaces but is not fully implemented yet.
+Still pending for later milestones: disk-backed decode caches, packaged FFmpeg sidecars for releases, richer batch execution, and updater/signing release work.
 
 ## Quick Start
 
@@ -42,6 +46,7 @@ Install Rust with `rustup`, then:
 ```bash
 cargo test -p vpg-core
 cargo run -p vpg-cli -- inspect ./example.mp4
+cargo run -p vpg-cli -- export ./example.vpg.json --out ./example.png
 ```
 
 ### Desktop app
@@ -63,3 +68,19 @@ Once the Rust toolchain and Tauri prerequisites are installed, the Tauri app can
 - [`docs/localization.md`](./docs/localization.md)
 - [`docs/project-format.md`](./docs/project-format.md)
 - [`CHANGELOG.md`](./CHANGELOG.md)
+
+## API Docs
+
+Rust API documentation is generated with `rustdoc`:
+
+```bash
+npm run docs:api:rust
+```
+
+TypeScript API documentation is generated with `TypeDoc` from TSDoc comments:
+
+```bash
+npm run docs:api:ts
+```
+
+Run `npm run docs:api` to build both.

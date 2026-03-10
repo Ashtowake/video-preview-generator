@@ -5,6 +5,7 @@
 1. Open the desktop app.
 2. Use the media pane to import a local video file.
 3. Choose `Quick Preview` for fast setup or `Full Fidelity` for exact frame work when safety limits allow it.
+4. In the desktop build, the visible preview frame is decoded by the Rust backend so transport jumps match exported frames more closely.
 
 ## Building a Sheet
 
@@ -18,10 +19,11 @@
 
 - Set a manual frame index to override automatic selection.
 - Use fine-tune controls for local adjustment.
-- Run `Find sharpest neighbour` to use the current placeholder analysis flow until the FFmpeg-backed analyzer lands.
+- Run `Find sharpest neighbour` to scan the selected tile across the configured frame window and replace it with the sharpest nearby frame.
 
 ## Project and Export
 
 - Save project files as `.vpg.json`.
 - Reopen projects to restore range, layout, and styling choices.
-- Export and batch processing are scaffolded through the shared Rust CLI and desktop command surface.
+- Export PNG or JPEG sheets from the desktop app or the shared Rust CLI.
+- Batch processing remains a planned follow-up; the `batch` command and project fields are present but still placeholder-level.

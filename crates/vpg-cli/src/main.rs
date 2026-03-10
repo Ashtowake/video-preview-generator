@@ -2,9 +2,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use vpg_core::{
-    validate_project, DiagnosticsBundle, ProjectFile, StubMediaService, ValidationLevel,
-};
+use vpg_core::{validate_project, DiagnosticsBundle, MediaService, ProjectFile, ValidationLevel};
 
 #[derive(Debug, Parser)]
 #[command(name = "video-preview")]
@@ -40,8 +38,9 @@ fn main() -> Result<()> {
 }
 
 fn inspect(video: PathBuf) -> Result<()> {
-    let project = ProjectFile::starter(video.display().to_string());
-    let estimate = StubMediaService.estimate_full_fidelity(&project);
+    let service = MediaService;
+    let project = service.load_video_project(&video.display().to_string())?;
+    let estimate = service.estimate_full_fidelity(&project);
     let diagnostics = DiagnosticsBundle::from_project(&project, "./cache");
 
     println!(
@@ -57,6 +56,7 @@ fn inspect(video: PathBuf) -> Result<()> {
 }
 
 fn export(project_path: PathBuf, out: Option<PathBuf>) -> Result<()> {
+    let service = MediaService;
     let project = read_project(&project_path)?;
     let issues = validate_project(&project);
     let errors: Vec<_> = issues
@@ -68,13 +68,16 @@ fn export(project_path: PathBuf, out: Option<PathBuf>) -> Result<()> {
         anyhow::bail!("project validation failed: {}", errors[0].message);
     }
 
-    let render_plan = StubMediaService.render_plan(&project);
+    let render_plan = service.render_plan(&project);
+    let export_result =
+        service.export_sheet(&project, out.as_ref().and_then(|path| path.to_str()))?;
     println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
             "project": project_path,
             "output": out,
-            "renderPlan": render_plan
+            "renderPlan": render_plan,
+            "exportResult": export_result
         }))?
     );
 

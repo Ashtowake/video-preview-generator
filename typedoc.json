@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/domain/src/index.ts",
+    "apps/desktop/src/lib/backend.ts",
+    "apps/desktop/src/store/editorStore.ts"
+  ],
+  "entryPointStrategy": "resolve",
+  "tsconfig": "tsconfig.base.json",
+  "out": "build/api/ts",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "sort": ["source-order"]
+}

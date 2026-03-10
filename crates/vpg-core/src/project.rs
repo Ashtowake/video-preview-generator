@@ -30,6 +30,7 @@ impl ProjectFile {
                 path: video_path.into(),
                 duration_ms: Some(60_000),
                 fps: Some(24.0),
+                frame_count: Some(1_440),
                 width: Some(1920),
                 height: Some(1080),
             },
@@ -52,6 +53,7 @@ impl ProjectFile {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+/// Decode depth selected for the current project.
 pub enum AnalysisMode {
     QuickPreview,
     FullFidelity,
@@ -59,16 +61,19 @@ pub enum AnalysisMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Source media metadata stored in the project file.
 pub struct VideoSource {
     pub path: String,
     pub duration_ms: Option<u64>,
     pub fps: Option<f64>,
+    pub frame_count: Option<u64>,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Playback state that should survive save/load operations.
 pub struct PlaybackSettings {
     pub playhead_ms: u64,
     pub active_frame_index: u64,
@@ -89,6 +94,7 @@ impl Default for PlaybackSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Inclusive working range used for auto-fill and export.
 pub struct TimeRange {
     pub start_ms: u64,
     pub end_ms: u64,
@@ -96,6 +102,7 @@ pub struct TimeRange {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Global sheet grid configuration and sharpness defaults.
 pub struct GridSettings {
     pub rows: u32,
     pub columns: u32,
@@ -118,6 +125,7 @@ impl Default for GridSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// One positioned tile inside the grid layout.
 pub struct ProjectTile {
     pub id: String,
     pub order: u32,
@@ -128,6 +136,7 @@ pub struct ProjectTile {
 }
 
 impl ProjectTile {
+    /// Creates a default unpinned tile for the given order index.
     pub fn auto(order: u32) -> Self {
         Self {
             id: format!("tile-{order}"),
@@ -141,14 +150,23 @@ impl ProjectTile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase")]
+/// Frame selection source for an individual tile.
 pub enum TileSelection {
+    #[serde(rename = "auto")]
     Auto,
-    ManualFrame { frame_index: u64, time_ms: u64 },
+    #[serde(rename = "manual")]
+    ManualFrame {
+        #[serde(rename = "frameIndex")]
+        frame_index: u64,
+        #[serde(rename = "timeMs")]
+        time_ms: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+/// Grid occupancy for a tile, including row and column spans.
 pub struct TileSpan {
     pub row: u32,
     pub column: u32,
@@ -169,6 +187,7 @@ impl Default for TileSpan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Sheet-wide styling applied during rendering.
 pub struct ProjectStyle {
     pub frame_rounding_px: u32,
     pub frame_shadow_px: u32,
@@ -193,6 +212,7 @@ impl Default for ProjectStyle {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Optional watermark layers rendered on top of the sheet.
 pub struct WatermarkSettings {
     pub text: Option<WatermarkText>,
     pub image: Option<WatermarkImage>,
@@ -212,6 +232,7 @@ impl Default for WatermarkSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Text watermark configuration.
 pub struct WatermarkText {
     pub value: String,
     pub opacity: f32,
@@ -219,6 +240,7 @@ pub struct WatermarkText {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Image watermark configuration.
 pub struct WatermarkImage {
     pub path: String,
     pub opacity: f32,
@@ -226,6 +248,7 @@ pub struct WatermarkImage {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+/// Supported raster output formats.
 pub enum ExportFormat {
     Png,
     Jpeg,
@@ -233,6 +256,7 @@ pub enum ExportFormat {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Final export settings applied by the renderer and CLI.
 pub struct ExportSettings {
     pub format: ExportFormat,
     pub scale: f32,
@@ -251,6 +275,7 @@ impl Default for ExportSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+/// Batch-processing options reused across multiple source videos.
 pub struct BatchSettings {
     pub enabled: bool,
     pub retain_manual_overrides: bool,
@@ -264,5 +289,28 @@ impl Default for BatchSettings {
             retain_manual_overrides: false,
             inputs: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TileSelection;
+
+    #[test]
+    fn tile_selection_serializes_with_frontend_shape() {
+        let selection = TileSelection::ManualFrame {
+            frame_index: 42,
+            time_ms: 1_750,
+        };
+
+        let value = serde_json::to_value(selection).expect("selection should serialize");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "kind": "manual",
+                "frameIndex": 42,
+                "timeMs": 1_750,
+            })
+        );
     }
 }

@@ -27,6 +27,10 @@ jobs:
         run: pnpm --filter @video-preview/domain typecheck
       - name: Desktop typecheck
         run: pnpm --filter @video-preview/desktop typecheck
+      - name: Desktop build
+        run: pnpm --filter @video-preview/desktop build
+      - name: Generate TypeScript API docs
+        run: pnpm run docs:api:ts
       - name: Generate third-party notices
         run: node scripts/generate-third-party-notices.mjs
 
@@ -37,7 +41,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
       - name: Test core crate
         run: cargo test -p vpg-core
       - name: Check CLI crate
         run: cargo check -p vpg-cli
+      - name: Check desktop crate
+        run: cargo check -p video-preview-desktop
+      - name: Generate Rust API docs
+        run: cargo doc --no-deps -p vpg-core -p vpg-cli
