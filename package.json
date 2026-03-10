@@ -1,0 +1,22 @@
+{
+  "name": "video-preview-generator",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:notices": "node scripts/generate-third-party-notices.mjs",
+    "dev:desktop": "npm run dev --workspace @video-preview/desktop",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.6"
+  }
+}

@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "apps/desktop/src-tauri",
+    "crates/vpg-cli",
+    "crates/vpg-core",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+authors = ["Open Source Contributors"]
+repository = "https://example.invalid/video-preview-generator"
+
+[workspace.dependencies]
+anyhow = "1.0.97"
+clap = { version = "4.5.31", features = ["derive"] }
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+time = { version = "0.3.39", features = ["formatting", "parsing", "serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "deny"

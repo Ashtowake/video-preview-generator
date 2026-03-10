@@ -1,0 +1,26 @@
+[package]
+name = "video-preview-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "video_preview_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.4" }
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.2.5" }
+tauri-plugin-dialog = "2.2.0"
+tauri-plugin-fs = "2.2.0"
+tauri-plugin-log = "2.2.1"
+tauri-plugin-shell = "2.2.0"
+tauri-plugin-updater = "2.6.1"
+vpg-core = { path = "../../../crates/vpg-core" }
+
+[lints]
+workspace = true

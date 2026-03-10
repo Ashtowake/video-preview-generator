@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "FFprobe sidecar placeholder. Replace this file with a real bundled ffprobe binary."
+exit 1

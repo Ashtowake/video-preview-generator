@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "FFmpeg sidecar placeholder. Replace this file with a real bundled ffmpeg binary."
+exit 1
