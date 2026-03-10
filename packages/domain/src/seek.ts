@@ -77,3 +77,29 @@ export const centerOfBinSamples = (
     Math.round(rangeStartMs + (((index + 0.5) * span) / count)),
   );
 };
+
+/** Evenly spreads sample times from an explicit start position to the end of the range. */
+export const evenlySpacedSamplesFromStart = (
+  rangeStartMs: number,
+  rangeEndMs: number,
+  sampleStartMs: number,
+  count: number,
+): number[] => {
+  if (count <= 0 || rangeEndMs <= rangeStartMs) {
+    return [];
+  }
+
+  const safeStart =
+    count === 1
+      ? Math.min(Math.max(sampleStartMs, rangeStartMs), rangeEndMs)
+      : Math.min(Math.max(sampleStartMs, rangeStartMs), Math.max(rangeStartMs, rangeEndMs - 1));
+
+  if (count === 1) {
+    return [safeStart];
+  }
+
+  const span = rangeEndMs - safeStart;
+  return Array.from({ length: count }, (_, index) =>
+    Math.round(safeStart + ((index * span) / (count - 1))),
+  );
+};

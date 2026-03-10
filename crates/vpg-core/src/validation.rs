@@ -26,6 +26,16 @@ pub fn validate_project(project: &ProjectFile) -> Vec<ValidationIssue> {
         });
     }
 
+    if project.range.sample_start_ms < project.range.start_ms
+        || project.range.sample_start_ms > project.range.end_ms
+    {
+        issues.push(ValidationIssue {
+            level: ValidationLevel::Error,
+            path: "range.sampleStartMs".to_string(),
+            message: "sample start must stay inside the selected range".to_string(),
+        });
+    }
+
     if project.playback.frame_step == 0 {
         issues.push(ValidationIssue {
             level: ValidationLevel::Error,

@@ -19,7 +19,8 @@ pub use project::{
 };
 pub use render::ExportResult;
 pub use seek::{
-    center_of_bin_samples, clamp_playhead_ms, parse_time_delta, step_by_frames, step_by_time,
+    center_of_bin_samples, clamp_playhead_ms, evenly_spaced_samples_from_start,
+    parse_time_delta, step_by_frames, step_by_time,
 };
 pub use services::{DecodeEstimate, MediaService, RenderPlan, ServiceStatus};
 pub use validation::{validate_project, ValidationIssue, ValidationLevel};

@@ -25,6 +25,7 @@ export const MediaRangePane = () => {
     setPlayheadMs,
     setRangeStart,
     setRangeEnd,
+    setSampleStart,
     setCustomSkip,
     setFrameStep,
     stepCustom,
@@ -164,11 +165,23 @@ export const MediaRangePane = () => {
             />
           </label>
         </div>
+        <label>
+          <span>{copy.media.startPosition}</span>
+          <input
+            disabled={busy || !loadedVideoUrl}
+            max={project.range.endMs}
+            min={project.range.startMs}
+            onChange={(event) => setSampleStart(Number(event.currentTarget.value))}
+            type="range"
+            value={project.range.sampleStartMs}
+          />
+        </label>
         <div className="stats-row">
           <span>{copy.media.playhead} {formatTimeMs(project.playback.playheadMs)}</span>
           <span>
             {copy.media.rangeLabel} {formatTimeMs(project.range.startMs)} - {formatTimeMs(project.range.endMs)}
           </span>
+          <span>{copy.media.startPosition} {formatTimeMs(project.range.sampleStartMs)}</span>
           <span>{copy.media.frameLabel} {project.playback.activeFrameIndex}</span>
         </div>
       </div>

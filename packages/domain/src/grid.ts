@@ -1,5 +1,5 @@
 import type { GridSettings, ProjectTile, TileSelection, ValidationIssue } from "./types";
-import { centerOfBinSamples } from "./seek";
+import { evenlySpacedSamplesFromStart } from "./seek";
 
 /**
  * Rebuilds the tile list for a new grid size while preserving per-tile selection state where
@@ -39,11 +39,17 @@ export const autoFillTiles = (
   tiles: ProjectTile[],
   rangeStartMs: number,
   rangeEndMs: number,
+  sampleStartMs: number,
   fps: number | undefined,
 ): ProjectTile[] => {
   const nextTiles = tiles.map((tile) => ({ ...tile }));
   const autoTileIndices = nextTiles.flatMap((tile, index) => (tile.pinned ? [] : [index]));
-  const samples = centerOfBinSamples(rangeStartMs, rangeEndMs, autoTileIndices.length);
+  const samples = evenlySpacedSamplesFromStart(
+    rangeStartMs,
+    rangeEndMs,
+    sampleStartMs,
+    autoTileIndices.length,
+  );
 
   autoTileIndices.forEach((tileIndex, sampleIndex) => {
     const timeMs = samples[sampleIndex] ?? rangeStartMs;

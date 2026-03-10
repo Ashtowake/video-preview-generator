@@ -59,6 +59,7 @@ export interface EditorState {
   setPlayheadMs: (playheadMs: number) => void;
   setRangeStart: (startMs: number) => void;
   setRangeEnd: (endMs: number) => void;
+  setSampleStart: (sampleStartMs: number) => void;
   setCustomSkip: (value: string) => void;
   setFrameStep: (step: number) => void;
   stepCustom: (direction: -1 | 1) => void;
@@ -117,6 +118,9 @@ const normalizedStyle = (style: ProjectStyle): ProjectStyle => ({
   frameShadowPx: clampGridSpacing(style.frameShadowPx),
   frameBorderPx: clampGridSpacing(style.frameBorderPx),
 });
+
+const clampSampleStart = (startMs: number, endMs: number, sampleStartMs: number): number =>
+  Math.min(Math.max(sampleStartMs, startMs), endMs);
 
 /**
  * Zustand hook for all editor state.
@@ -186,7 +190,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         durationMs,
         frameCount: Math.round((durationMs / 1000) * (get().project.video.fps ?? 24)),
       },
-      range: { ...get().project.range, endMs: durationMs },
+      range: {
+        ...get().project.range,
+        endMs: durationMs,
+        sampleStartMs: clampSampleStart(
+          get().project.range.startMs,
+          durationMs,
+          get().project.range.sampleStartMs,
+        ),
+      },
     };
     set(syncState(nextProject, get().selectedTileId));
   },
@@ -211,6 +223,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       range: {
         startMs: Math.min(startMs, project.range.endMs - 250),
         endMs: project.range.endMs,
+        sampleStartMs: clampSampleStart(
+          Math.min(startMs, project.range.endMs - 250),
+          project.range.endMs,
+          project.range.sampleStartMs,
+        ),
       },
     };
     set(syncState(nextProject, get().selectedTileId));
@@ -218,11 +235,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setRangeEnd: (endMs) => {
     const { project } = get();
     const durationMs = project.video.durationMs ?? 60_000;
+    const nextEndMs = Math.max(Math.min(endMs, durationMs), project.range.startMs + 250);
     const nextProject = {
       ...project,
       range: {
         startMs: project.range.startMs,
-        endMs: Math.max(Math.min(endMs, durationMs), project.range.startMs + 250),
+        endMs: nextEndMs,
+        sampleStartMs: clampSampleStart(
+          project.range.startMs,
+          nextEndMs,
+          project.range.sampleStartMs,
+        ),
+      },
+    };
+    set(syncState(nextProject, get().selectedTileId));
+  },
+  setSampleStart: (sampleStartMs) => {
+    const { project } = get();
+    const nextProject = {
+      ...project,
+      range: {
+        ...project.range,
+        sampleStartMs: clampSampleStart(
+          project.range.startMs,
+          project.range.endMs,
+          sampleStartMs,
+        ),
       },
     };
     set(syncState(nextProject, get().selectedTileId));
@@ -323,6 +361,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         project.tiles,
         project.range.startMs,
         project.range.endMs,
+        project.range.sampleStartMs,
         project.video.fps,
       ),
     };
@@ -339,6 +378,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         reshapedTiles,
         project.range.startMs,
         project.range.endMs,
+        project.range.sampleStartMs,
         project.video.fps,
       ),
     };

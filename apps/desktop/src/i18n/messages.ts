@@ -62,6 +62,7 @@ interface Catalog {
     playhead: string;
     rangeStart: string;
     rangeEnd: string;
+    startPosition: string;
     rangeLabel: string;
     frameLabel: string;
     customJump: string;
@@ -171,6 +172,7 @@ const en: Catalog = {
     playhead: "Playhead",
     rangeStart: "Range start",
     rangeEnd: "Range end",
+    startPosition: "Start position",
     rangeLabel: "Range",
     frameLabel: "Frame",
     customJump: "Custom jump",
@@ -363,6 +365,7 @@ const de: Catalog = {
     playhead: "Abspielposition",
     rangeStart: "Bereichsbeginn",
     rangeEnd: "Bereichsende",
+    startPosition: "Startposition",
     rangeLabel: "Bereich",
     frameLabel: "Frame",
     customJump: "Benutzerdefinierter Sprung",

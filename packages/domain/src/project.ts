@@ -68,7 +68,7 @@ export const createStarterProject = (videoPath = "unloaded-video.mp4"): ProjectF
       height: 1080,
     },
     playback: defaultPlayback(),
-    range: { startMs: 0, endMs: 60_000 },
+    range: { startMs: 0, endMs: 60_000, sampleStartMs: 0 },
     grid,
     tiles: Array.from({ length: tileCount }, (_, index) => autoTile(index)),
     style: defaultStyle(),

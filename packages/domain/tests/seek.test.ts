@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { centerOfBinSamples, parseTimeDelta, stepByFrames } from "../src/index";
+import {
+  centerOfBinSamples,
+  evenlySpacedSamplesFromStart,
+  parseTimeDelta,
+  stepByFrames,
+} from "../src/index";
 
 describe("seek helpers", () => {
   it("distributes samples using center-of-bin spacing", () => {
@@ -11,6 +16,10 @@ describe("seek helpers", () => {
     expect(parseTimeDelta("5")).toBe(5000);
     expect(parseTimeDelta("1:05")).toBe(65_000);
     expect(parseTimeDelta("1:02:03.5")).toBe(3_723_500);
+  });
+
+  it("distributes samples from an explicit start position", () => {
+    expect(evenlySpacedSamplesFromStart(0, 1000, 200, 4)).toEqual([200, 467, 733, 1000]);
   });
 
   it("steps by frames using fps", () => {

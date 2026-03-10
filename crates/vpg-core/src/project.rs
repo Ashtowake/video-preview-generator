@@ -38,6 +38,7 @@ impl ProjectFile {
             range: TimeRange {
                 start_ms: 0,
                 end_ms: 60_000,
+                sample_start_ms: 0,
             },
             grid,
             tiles: (0..total_tiles)
@@ -98,6 +99,7 @@ impl Default for PlaybackSettings {
 pub struct TimeRange {
     pub start_ms: u64,
     pub end_ms: u64,
+    pub sample_start_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

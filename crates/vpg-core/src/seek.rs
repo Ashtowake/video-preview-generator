@@ -16,6 +16,36 @@ pub fn center_of_bin_samples(range_start_ms: u64, range_end_ms: u64, count: usiz
         .collect()
 }
 
+/// Evenly distributes sample times from an explicit starting point to the end of the range.
+pub fn evenly_spaced_samples_from_start(
+    range_start_ms: u64,
+    range_end_ms: u64,
+    sample_start_ms: u64,
+    count: usize,
+) -> Vec<u64> {
+    if count == 0 || range_end_ms <= range_start_ms {
+        return Vec::new();
+    }
+
+    let safe_start = if count == 1 {
+        sample_start_ms.clamp(range_start_ms, range_end_ms)
+    } else {
+        sample_start_ms.clamp(range_start_ms, range_end_ms.saturating_sub(1))
+    };
+
+    if count == 1 {
+        return vec![safe_start];
+    }
+
+    let span = (range_end_ms - safe_start) as f64;
+    (0..count)
+        .map(|index| {
+            let offset = index as f64 * span / (count.saturating_sub(1)) as f64;
+            safe_start + offset.round() as u64
+        })
+        .collect()
+}
+
 /// Clamps a playhead to the available media duration.
 pub fn clamp_playhead_ms(playhead_ms: i128, duration_ms: u64) -> u64 {
     playhead_ms.clamp(0, duration_ms as i128) as u64
@@ -59,7 +89,8 @@ pub fn parse_time_delta(input: &str) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        center_of_bin_samples, clamp_playhead_ms, parse_time_delta, step_by_frames, step_by_time,
+        center_of_bin_samples, clamp_playhead_ms, evenly_spaced_samples_from_start,
+        parse_time_delta, step_by_frames, step_by_time,
     };
 
     #[test]
@@ -72,6 +103,12 @@ mod tests {
     fn playhead_clamps_to_duration() {
         assert_eq!(clamp_playhead_ms(-50, 1000), 0);
         assert_eq!(clamp_playhead_ms(1_250, 1000), 1000);
+    }
+
+    #[test]
+    fn samples_can_start_from_an_explicit_position() {
+        let samples = evenly_spaced_samples_from_start(0, 1_000, 200, 4);
+        assert_eq!(samples, vec![200, 467, 733, 1_000]);
     }
 
     #[test]

@@ -23,6 +23,7 @@ export interface PlaybackSettings {
 export interface TimeRange {
   startMs: number;
   endMs: number;
+  sampleStartMs: number;
 }
 
 /** Sheet-wide grid settings and sharpness window defaults. */

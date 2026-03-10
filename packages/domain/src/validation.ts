@@ -20,6 +20,17 @@ export const validateProject = (project: ProjectFile): ValidationIssue[] => {
     });
   }
 
+  if (
+    project.range.sampleStartMs < project.range.startMs ||
+    project.range.sampleStartMs > project.range.endMs
+  ) {
+    issues.push({
+      level: "error",
+      path: "range.sampleStartMs",
+      message: "Start position must stay inside the selected range.",
+    });
+  }
+
   if (project.playback.frameStep < 1) {
     issues.push({
       level: "error",

@@ -11,4 +11,5 @@
 - Switched the desktop media preview to Rust-decoded still frames instead of relying only on the webview video element.
 - Added a bounded LRU preview cache in the Tauri shell to avoid redundant decode work while scrubbing.
 - Added real inspector controls for grid sizing, spacing, frame styling, export format/scale, and watermark text.
+- Added a separate start-position control for auto-filled frame sampling and persisted it in the shared project format.
 - Fixed the Rust/TypeScript project schema contract for per-tile manual frame selections.

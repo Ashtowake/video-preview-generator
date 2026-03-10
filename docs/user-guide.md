@@ -11,10 +11,11 @@
 
 1. Scrub the timeline and set the in/out range.
 2. Use the transport buttons for custom jumps, `5s`, `1s`, and frame stepping.
-3. Run `Auto-fill grid` to distribute frames evenly inside the selected range.
-4. Pin or fine-tune individual tiles from the inspector.
-5. Resize tiles by changing their row or column span.
-6. Use the inspector to change grid size, gutter, margins, rounded corners, shadows, export format, scale, and watermark text.
+3. Adjust `Start position` if the first extracted frame should begin later inside the selected range.
+4. Run `Auto-fill grid` to distribute frames evenly from that start position through the end of the range.
+5. Pin or fine-tune individual tiles from the inspector.
+6. Resize tiles by changing their row or column span.
+7. Use the inspector to change grid size, gutter, margins, rounded corners, shadows, export format, scale, and watermark text.
 
 ## Editing Tiles
 

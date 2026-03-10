@@ -69,6 +69,7 @@ pub fn create_project_from_probe(video_path: &str) -> Result<ProjectFile> {
     project.range = TimeRange {
         start_ms: 0,
         end_ms: probe.duration_ms.max(1_000),
+        sample_start_ms: 0,
     };
     project.playback = PlaybackSettings {
         playhead_ms: 0,
@@ -76,7 +77,13 @@ pub fn create_project_from_probe(video_path: &str) -> Result<ProjectFile> {
         custom_skip_ms: 10_000,
         frame_step: 1,
     };
-    assign_auto_tiles(&mut project.tiles, 0, project.range.end_ms, probe.fps);
+    assign_auto_tiles(
+        &mut project.tiles,
+        0,
+        project.range.end_ms,
+        project.range.sample_start_ms,
+        probe.fps,
+    );
     Ok(project)
 }
 

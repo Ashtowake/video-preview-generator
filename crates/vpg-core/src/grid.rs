@@ -1,5 +1,5 @@
 use crate::project::{ProjectTile, TileSelection, TileSpan};
-use crate::seek::center_of_bin_samples;
+use crate::seek::evenly_spaced_samples_from_start;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GridValidationIssue {
@@ -12,6 +12,7 @@ pub fn assign_auto_tiles(
     tiles: &mut [ProjectTile],
     range_start_ms: u64,
     range_end_ms: u64,
+    sample_start_ms: u64,
     fps: f64,
 ) {
     let auto_indices: Vec<usize> = tiles
@@ -20,7 +21,12 @@ pub fn assign_auto_tiles(
         .filter_map(|(index, tile)| (!tile.pinned).then_some(index))
         .collect();
 
-    let samples = center_of_bin_samples(range_start_ms, range_end_ms, auto_indices.len());
+    let samples = evenly_spaced_samples_from_start(
+        range_start_ms,
+        range_end_ms,
+        sample_start_ms,
+        auto_indices.len(),
+    );
 
     for (sample_index, tile_index) in auto_indices.into_iter().enumerate() {
         let sample_ms = samples[sample_index];
@@ -100,7 +106,7 @@ mod tests {
             time_ms: 500,
         };
 
-        assign_auto_tiles(&mut project.tiles, 0, 10_000, 24.0);
+        assign_auto_tiles(&mut project.tiles, 0, 10_000, 0, 24.0);
 
         assert_eq!(
             project.tiles[0].selection,
