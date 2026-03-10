@@ -58,7 +58,13 @@ The frontend shell can run in a browser during early development:
 pnpm --filter @video-preview/desktop dev
 ```
 
-Once the Rust toolchain and Tauri prerequisites are installed, the Tauri app can be launched from the desktop workspace.
+Once the Rust toolchain and Tauri prerequisites are installed, launch the desktop app with:
+
+```bash
+pnpm dev:desktop
+```
+
+On Linux Wayland sessions, the wrapper enables the WebKitGTK DMA-BUF workaround automatically for local development.
 
 ## Documentation
 
@@ -75,13 +81,13 @@ Once the Rust toolchain and Tauri prerequisites are installed, the Tauri app can
 Rust API documentation is generated with `rustdoc`:
 
 ```bash
-npm run docs:api:rust
+pnpm docs:api:rust
 ```
 
 TypeScript API documentation is generated with `TypeDoc` from TSDoc comments:
 
 ```bash
-npm run docs:api:ts
+pnpm docs:api:ts
 ```
 
-Run `npm run docs:api` to build both.
+Run `pnpm docs:api` to build both.

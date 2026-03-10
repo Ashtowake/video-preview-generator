@@ -7,15 +7,15 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "pnpm -r --if-present run build",
     "build:notices": "node scripts/generate-third-party-notices.mjs",
-    "dev:desktop": "npm run dev --workspace @video-preview/desktop",
-    "docs:api": "npm run docs:api:rust && npm run docs:api:ts",
+    "dev:desktop": "pnpm --filter @video-preview/desktop run tauri:dev",
+    "docs:api": "pnpm docs:api:rust && pnpm docs:api:ts",
     "docs:api:rust": "cargo doc --no-deps -p vpg-core -p vpg-cli",
     "docs:api:ts": "typedoc --options typedoc.json",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "lint": "pnpm -r --if-present run lint",
+    "test": "pnpm -r --if-present run test",
+    "typecheck": "pnpm -r --if-present run typecheck"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",

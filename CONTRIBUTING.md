@@ -24,8 +24,8 @@
 
 ## API Documentation
 
-- Generate Rust API docs with `npm run docs:api:rust` or `cargo doc --no-deps -p vpg-core -p vpg-cli`.
-- Generate TypeScript API docs with `npm run docs:api:ts`.
+- Generate Rust API docs with `pnpm docs:api:rust` or `cargo doc --no-deps -p vpg-core -p vpg-cli`.
+- Generate TypeScript API docs with `pnpm docs:api:ts`.
 - Use doc comments to explain purpose, invariants, and edge cases. Avoid narrating obvious syntax.
 
 ## Git Hygiene

@@ -7,9 +7,10 @@
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
     "lint": "tsc --noEmit",
+    "tauri:build": "tauri build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "tauri:dev": "tauri dev"
+    "tauri:dev": "node ./scripts/run-tauri-dev.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
