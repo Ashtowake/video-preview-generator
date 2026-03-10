@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "io.github.video-preview-generator.app",
   "build": {
-    "beforeDevCommand": "npm run dev --workspace @video-preview/desktop",
-    "beforeBuildCommand": "npm run build --workspace @video-preview/desktop",
+    "beforeDevCommand": "pnpm --filter @video-preview/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @video-preview/desktop build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
