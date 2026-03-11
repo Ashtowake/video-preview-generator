@@ -1,5 +1,8 @@
 use crate::project::{ProjectTile, TileSelection, TileSpan};
-use crate::seek::evenly_spaced_samples_from_start;
+use crate::seek::{
+    clamp_frame_index, evenly_spaced_samples_from_start, frame_index_at_time_ms,
+    seek_time_for_frame_index,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GridValidationIssue {
@@ -14,6 +17,7 @@ pub fn assign_auto_tiles(
     range_end_ms: u64,
     sample_start_ms: u64,
     fps: f64,
+    frame_count: Option<u64>,
 ) {
     let auto_indices: Vec<usize> = tiles
         .iter()
@@ -30,15 +34,16 @@ pub fn assign_auto_tiles(
 
     for (sample_index, tile_index) in auto_indices.into_iter().enumerate() {
         let sample_ms = samples[sample_index];
-        let frame_index = if fps > 0.0 {
-            ((sample_ms as f64 / 1000.0) * fps).round() as u64
-        } else {
-            0
-        };
+        let frame_index = clamp_frame_index(frame_index_at_time_ms(sample_ms, fps), frame_count);
+        let time_ms = seek_time_for_frame_index(
+            frame_index as i64,
+            fps,
+            range_end_ms.max(range_start_ms + 1),
+        );
 
         tiles[tile_index].selection = TileSelection::ManualFrame {
             frame_index,
-            time_ms: sample_ms,
+            time_ms,
         };
         tiles[tile_index].fine_tune_offset_ms = 0;
     }
@@ -106,7 +111,7 @@ mod tests {
             time_ms: 500,
         };
 
-        assign_auto_tiles(&mut project.tiles, 0, 10_000, 0, 24.0);
+        assign_auto_tiles(&mut project.tiles, 0, 10_000, 0, 24.0, project.video.frame_count);
 
         assert_eq!(
             project.tiles[0].selection,

@@ -51,6 +51,47 @@ pub fn clamp_playhead_ms(playhead_ms: i128, duration_ms: u64) -> u64 {
     playhead_ms.clamp(0, duration_ms as i128) as u64
 }
 
+/// Clamps a computed frame index to the actual frame range when frame count is known.
+pub fn clamp_frame_index(frame_index: u64, frame_count: Option<u64>) -> u64 {
+    if let Some(frame_count) = frame_count {
+        if frame_count > 0 {
+            return frame_index.min(frame_count.saturating_sub(1));
+        }
+    }
+
+    frame_index
+}
+
+/// Formats a zero-based frame index for user-facing labels.
+pub fn display_frame_number(frame_index: u64, frame_count: Option<u64>) -> u64 {
+    clamp_frame_index(frame_index, frame_count) + 1
+}
+
+/// Maps a timestamp to the nearest frame position used by the exact-preview path.
+pub fn frame_index_at_time_ms(time_ms: u64, fps: f64) -> u64 {
+    if fps <= 0.0 {
+        return 0;
+    }
+
+    ((time_ms as f64 / 1000.0) * fps).round().max(0.0) as u64
+}
+
+/// Returns a seek timestamp at the start of the requested frame.
+pub fn seek_time_for_frame_index(frame_index: i64, fps: f64, duration_ms: u64) -> u64 {
+    if fps <= 0.0 {
+        return 0;
+    }
+
+    let safe_frame_index = frame_index.max(0) as u64;
+    if safe_frame_index == 0 {
+        return 0;
+    }
+
+    let frame_start_ms = ((safe_frame_index as f64 / fps) * 1000.0).round() as u64;
+    let latest_seek_ms = duration_ms.saturating_sub(1);
+    frame_start_ms.min(latest_seek_ms)
+}
+
 /// Applies a time-based jump in milliseconds to a playhead.
 pub fn step_by_time(playhead_ms: u64, delta_ms: i64, duration_ms: u64) -> u64 {
     clamp_playhead_ms(playhead_ms as i128 + delta_ms as i128, duration_ms)
@@ -62,8 +103,8 @@ pub fn step_by_frames(playhead_ms: u64, frames: i32, fps: f64, duration_ms: u64)
         return playhead_ms;
     }
 
-    let delta_ms = (frames as f64 / fps * 1000.0).round() as i64;
-    step_by_time(playhead_ms, delta_ms, duration_ms)
+    let current_frame_index = frame_index_at_time_ms(playhead_ms, fps) as i64;
+    seek_time_for_frame_index(current_frame_index + frames as i64, fps, duration_ms)
 }
 
 /// Parses `h:m:s.ms`, `m:s`, or plain seconds into milliseconds.
@@ -90,7 +131,8 @@ pub fn parse_time_delta(input: &str) -> Result<u64> {
 mod tests {
     use super::{
         center_of_bin_samples, clamp_playhead_ms, evenly_spaced_samples_from_start,
-        parse_time_delta, step_by_frames, step_by_time,
+        frame_index_at_time_ms, parse_time_delta, seek_time_for_frame_index, step_by_frames,
+        step_by_time,
     };
 
     #[test]
@@ -127,5 +169,18 @@ mod tests {
         assert_eq!(parse_time_delta("5").unwrap(), 5_000);
         assert_eq!(parse_time_delta("1:05").unwrap(), 65_000);
         assert_eq!(parse_time_delta("1:02:03.5").unwrap(), 3_723_500);
+    }
+
+    #[test]
+    fn frame_index_uses_frame_intervals() {
+        assert_eq!(frame_index_at_time_ms(0, 30.0), 0);
+        assert_eq!(frame_index_at_time_ms(33, 30.0), 1);
+        assert_eq!(frame_index_at_time_ms(50, 30.0), 2);
+    }
+
+    #[test]
+    fn frame_seek_targets_the_frame_start() {
+        assert_eq!(seek_time_for_frame_index(0, 30.0, 1_000), 0);
+        assert_eq!(seek_time_for_frame_index(1, 30.0, 1_000), 33);
     }
 }

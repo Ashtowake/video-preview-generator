@@ -9,15 +9,18 @@ name = "video_preview_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.4" }
+tauri-build = { version = "2.0.4", features = [] }
 
 [dependencies]
+anyhow.workspace = true
+base64 = "0.22.1"
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2.2.5" }
+tauri = { version = "2.2.5", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2.2.0"
 tauri-plugin-fs = "2.2.0"
 tauri-plugin-log = "2.2.1"
+tauri-plugin-mpv = "0.5.2"
 tauri-plugin-shell = "2.2.0"
 tauri-plugin-updater = "2.6.1"
 vpg-core = { path = "../../../crates/vpg-core" }

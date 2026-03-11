@@ -25,6 +25,7 @@ interface Catalog {
     title: string;
     description: string;
     languageLabel: string;
+    menuLabel: string;
   };
   nav: {
     editor: string;
@@ -56,9 +57,12 @@ interface Catalog {
     browseVideo: string;
     emptyState: string;
     emptyHint: string;
+    preparingPlayback: string;
+    preparingPlaybackHint: string;
     backendPreviewHint: string;
     loadingPreview: string;
     previewAlt: string;
+    playerLoadError: string;
     playhead: string;
     rangeStart: string;
     rangeEnd: string;
@@ -87,6 +91,12 @@ interface Catalog {
     eyebrow: string;
     title: string;
     description: string;
+    emptyState: string;
+    emptyHint: string;
+    loadingPreview: string;
+    waitingPreview: string;
+    previewHint: string;
+    previewAlt: string;
     pinned: string;
     auto: string;
     frame: string;
@@ -95,6 +105,8 @@ interface Catalog {
     eyebrow: string;
     title: string;
     selectedTile: string;
+    previousTile: string;
+    nextTile: string;
     span: string;
     fineTune: string;
     pin: string;
@@ -138,6 +150,7 @@ const en: Catalog = {
     title: "Video Preview Generator",
     description: "Polished contact sheets, frame control, and batch-ready exports.",
     languageLabel: "Language",
+    menuLabel: "Menu",
   },
   nav: {
     editor: "Editor",
@@ -170,9 +183,12 @@ const en: Catalog = {
     emptyState: "Load a local video to preview transport and range controls.",
     emptyHint:
       "The browser shell uses an object URL now. The Tauri build can later swap to backend-driven decode.",
+    preparingPlayback: "Preparing lightweight preview playback...",
+    preparingPlaybackHint: "A cached proxy is being generated so the embedded player can scrub and play more smoothly.",
     backendPreviewHint: "Exact frame extraction is refreshed when playback pauses, scrubbing ends, or a step control is used.",
     loadingPreview: "Refreshing preview frame...",
     previewAlt: "Current decoded preview frame",
+    playerLoadError: "The embedded desktop player could not open the selected video file.",
     playhead: "Playhead",
     rangeStart: "Range start",
     rangeEnd: "Range end",
@@ -200,7 +216,13 @@ const en: Catalog = {
   canvas: {
     eyebrow: "Sheet canvas",
     title: "Grid composition",
-    description: "Rounded edges, frame shadows, metadata, and watermark options are in the inspector.",
+    description: "This preview is rendered by the Rust exporter so the editor matches the final sheet layout.",
+    emptyState: "Import a video to render the actual contact sheet preview.",
+    emptyHint: "The grid preview stays empty until a source video is available.",
+    loadingPreview: "Rendering sheet preview...",
+    waitingPreview: "Preparing sheet preview...",
+    previewHint: "The central preview mirrors the exported sheet, including aspect ratio and styling.",
+    previewAlt: "Rendered contact sheet preview",
     pinned: "Pinned",
     auto: "Auto",
     frame: "Frame",
@@ -209,6 +231,8 @@ const en: Catalog = {
     eyebrow: "Inspector",
     title: "Tile and style controls",
     selectedTile: "Selected tile",
+    previousTile: "Previous tile",
+    nextTile: "Next tile",
     span: "Span",
     fineTune: "Fine tune",
     pin: "Pin tile",
@@ -335,6 +359,7 @@ const de: Catalog = {
     title: "Video Preview Generator",
     description: "Polierte Kontaktbögen, Frame-Kontrolle und batchfähige Exporte.",
     languageLabel: "Sprache",
+    menuLabel: "Menü",
   },
   nav: {
     editor: "Editor",
@@ -367,9 +392,12 @@ const de: Catalog = {
     emptyState: "Lokales Video laden, um Vorschau- und Bereichssteuerung zu testen.",
     emptyHint:
       "Die Browser-Shell nutzt aktuell eine Objekt-URL. Im Tauri-Build kann das später durch Backend-Decoding ersetzt werden.",
+    preparingPlayback: "Leichtgewichtige Vorschau-Wiedergabe wird vorbereitet...",
+    preparingPlaybackHint: "Es wird ein gecachter Proxy erzeugt, damit der eingebettete Player flüssiger scrubbt und abspielt.",
     backendPreviewHint: "Exakte Frame-Dekodierung wird aktualisiert, wenn die Wiedergabe pausiert, das Scrubbing endet oder Schrittsteuerungen genutzt werden.",
     loadingPreview: "Vorschaubild wird aktualisiert...",
     previewAlt: "Aktuell dekodiertes Vorschaubild",
+    playerLoadError: "Der eingebettete Desktop-Player konnte die ausgewählte Videodatei nicht öffnen.",
     playhead: "Abspielposition",
     rangeStart: "Bereichsbeginn",
     rangeEnd: "Bereichsende",
@@ -397,7 +425,13 @@ const de: Catalog = {
   canvas: {
     eyebrow: "Bogenfläche",
     title: "Raster-Komposition",
-    description: "Abgerundete Ecken, Frame-Schatten, Metadaten und Wasserzeichen liegen im Inspector.",
+    description: "Diese Vorschau wird vom Rust-Exporter gerendert, damit der Editor dem finalen Bogen entspricht.",
+    emptyState: "Importiere ein Video, um die tatsächliche Kontaktbogen-Vorschau zu rendern.",
+    emptyHint: "Die Rastervorschau bleibt leer, bis ein Quellvideo verfügbar ist.",
+    loadingPreview: "Bogenvorschau wird gerendert...",
+    waitingPreview: "Bogenvorschau wird vorbereitet...",
+    previewHint: "Die zentrale Vorschau entspricht dem exportierten Bogen inklusive Seitenverhältnis und Stil.",
+    previewAlt: "Gerenderte Kontaktbogen-Vorschau",
     pinned: "Fixiert",
     auto: "Auto",
     frame: "Frame",
@@ -406,6 +440,8 @@ const de: Catalog = {
     eyebrow: "Inspector",
     title: "Kachel- und Stilsteuerung",
     selectedTile: "Ausgewählte Kachel",
+    previousTile: "Vorherige Kachel",
+    nextTile: "Nächste Kachel",
     span: "Spanne",
     fineTune: "Feinabstimmung",
     pin: "Kachel fixieren",

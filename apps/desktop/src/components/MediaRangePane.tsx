@@ -1,6 +1,8 @@
 import {
   clampPlayheadMs,
+  displayFrameNumber,
   estimateFullFidelity,
+  frameIndexAtTimeMs,
   formatTimeMs,
   stepByFrames,
   stepByTime,
@@ -18,7 +20,10 @@ export const MediaRangePane = () => {
   const {
     project,
     loadedVideoUrl,
+    playbackPreparing,
     loadedVideoSizeBytes,
+    previewFrame,
+    previewBusy,
     previewError,
     alert,
     busy,
@@ -39,13 +44,33 @@ export const MediaRangePane = () => {
 
   const durationMs = project.video.durationMs ?? 60_000;
   const fps = project.video.fps ?? 24;
+  const hasVideo = Boolean(project.video.path) && project.video.path !== "unloaded-video.mp4";
   const rangeSpanMs = Math.max(250, project.range.endMs - project.range.startMs);
   const sampleOffsetMs = Math.max(0, project.range.sampleStartMs - project.range.startMs);
   const decodeEstimate = estimateFullFidelity(project, loadedVideoSizeBytes);
   const [playerPlayheadMs, setPlayerPlayheadMs] = useState(project.playback.playheadMs);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
   const isScrubbingRef = useRef(false);
   const scrubbedPlayheadMsRef = useRef(project.playback.playheadMs);
+  const pendingPauseMsRef = useRef<number | null>(null);
+  const frameToleranceMs = Math.max(10, Math.round(500 / fps));
+  const previewFrameFresh =
+    previewFrame && Math.abs(previewFrame.timeMs - playerPlayheadMs) <= frameToleranceMs
+      ? previewFrame
+      : null;
+  const showExactPreview = !isPlaying && Boolean(previewFrameFresh);
+  const showPreviewSyncState = !isPlaying && !previewFrameFresh;
+  const previewPrimaryMessage = playbackPreparing
+    ? copy.media.preparingPlayback
+    : previewBusy
+      ? copy.media.loadingPreview
+      : copy.media.previewAlt;
+  const previewSecondaryMessage = playbackPreparing
+    ? copy.media.preparingPlaybackHint
+    : previewBusy
+      ? copy.media.backendPreviewHint
+      : copy.media.emptyHint;
 
   const applyVideoTime = (nextMs: number) => {
     if (!videoRef.current) {
@@ -53,7 +78,7 @@ export const MediaRangePane = () => {
     }
 
     const currentMs = Math.round(videoRef.current.currentTime * 1000);
-    if (Math.abs(currentMs - nextMs) > 40) {
+    if (Math.abs(currentMs - nextMs) > 2) {
       videoRef.current.currentTime = nextMs / 1000;
     }
   };
@@ -66,15 +91,28 @@ export const MediaRangePane = () => {
     setPlayheadMs(clampedMs);
   };
 
-  const previewFrameIndex = Math.round((playerPlayheadMs / 1000) * fps);
+  const effectivePlayheadMs = !isPlaying && previewFrameFresh ? previewFrameFresh.timeMs : playerPlayheadMs;
+  const previewFrameIndex = !isPlaying && previewFrameFresh
+    ? previewFrameFresh.frameIndex
+    : frameIndexAtTimeMs(playerPlayheadMs, fps);
 
   useEffect(() => {
     setIsPlaying(false);
+    setPlayerError(null);
+    pendingPauseMsRef.current = null;
   }, [loadedVideoUrl]);
 
   useEffect(() => {
     if (isPlaying || isScrubbingRef.current) {
       return;
+    }
+
+    if (pendingPauseMsRef.current !== null) {
+      if (Math.abs(project.playback.playheadMs - pendingPauseMsRef.current) > 2) {
+        return;
+      }
+
+      pendingPauseMsRef.current = null;
     }
 
     scrubbedPlayheadMsRef.current = project.playback.playheadMs;
@@ -83,12 +121,7 @@ export const MediaRangePane = () => {
   }, [isPlaying, project.playback.playheadMs, loadedVideoUrl]);
 
   useEffect(() => {
-    if (
-      !desktopRuntime ||
-      isPlaying ||
-      !project.video.path ||
-      project.video.path === "unloaded-video.mp4"
-    ) {
+    if (!desktopRuntime || isPlaying || !project.video.path || project.video.path === "unloaded-video.mp4") {
       return;
     }
 
@@ -97,9 +130,16 @@ export const MediaRangePane = () => {
     }, 120);
 
     return () => window.clearTimeout(timeoutId);
-  }, [desktopRuntime, isPlaying, project.playback.playheadMs, project.video.path, refreshPreviewFrame]);
+  }, [
+    desktopRuntime,
+    isPlaying,
+    project.playback.playheadMs,
+    project.video.path,
+    refreshPreviewFrame,
+  ]);
 
-  const loaded = Boolean(loadedVideoUrl);
+  const loaded = hasVideo;
+  const canPlayVideo = Boolean(loadedVideoUrl);
 
   return (
     <section className="panel panel--media">
@@ -143,37 +183,69 @@ export const MediaRangePane = () => {
       </div>
 
       <div className="video-frame">
-        {loadedVideoUrl ? (
-          <video
-            controls={false}
-            onEnded={() => {
-              setIsPlaying(false);
-              commitPlayhead(durationMs);
-            }}
-            onLoadedMetadata={(event) => {
-              const element = event.currentTarget;
-              setDurationMs(Math.round(element.duration * 1000));
-              applyVideoTime(project.playback.playheadMs);
-            }}
-            onPause={(event) => {
-              setIsPlaying(false);
-              if (!isScrubbingRef.current) {
-                commitPlayhead(Math.round(event.currentTarget.currentTime * 1000));
-              }
-            }}
-            onPlay={() => setIsPlaying(true)}
-            onTimeUpdate={(event) => {
-              if (isScrubbingRef.current) {
-                return;
-              }
+        {hasVideo ? (
+          <div className="video-frame__media">
+            {loadedVideoUrl ? (
+              <video
+                className={isPlaying ? "video-frame__player" : "video-frame__player video-frame__player--hidden"}
+                controls={false}
+                key={loadedVideoUrl}
+                onEnded={() => {
+                  setIsPlaying(false);
+                  commitPlayhead(durationMs);
+                }}
+                onError={(event) => {
+                  setIsPlaying(false);
+                  const mediaError = event.currentTarget.error;
+                  const details = mediaError ? ` (HTMLMediaError ${mediaError.code})` : "";
+                  setPlayerError(`${copy.media.playerLoadError}${details}`);
+                }}
+                onLoadedMetadata={(event) => {
+                  const element = event.currentTarget;
+                  setPlayerError(null);
+                  setDurationMs(Math.round(element.duration * 1000));
+                  applyVideoTime(project.playback.playheadMs);
+                }}
+                onPause={(event) => {
+                  if (!isScrubbingRef.current) {
+                    const pausedMs = Math.round(event.currentTarget.currentTime * 1000);
+                    pendingPauseMsRef.current = pausedMs;
+                    scrubbedPlayheadMsRef.current = pausedMs;
+                    setPlayerPlayheadMs(pausedMs);
+                    setPlayheadMs(pausedMs);
+                  }
+                  setIsPlaying(false);
+                }}
+                onPlay={() => setIsPlaying(true)}
+                onTimeUpdate={(event) => {
+                  if (isScrubbingRef.current) {
+                    return;
+                  }
 
-              const nextMs = Math.round(event.currentTarget.currentTime * 1000);
-              scrubbedPlayheadMsRef.current = nextMs;
-              setPlayerPlayheadMs(nextMs);
-            }}
-            ref={videoRef}
-            src={loadedVideoUrl}
-          />
+                  const nextMs = Math.round(event.currentTarget.currentTime * 1000);
+                  scrubbedPlayheadMsRef.current = nextMs;
+                  setPlayerPlayheadMs(nextMs);
+                }}
+                poster={previewFrameFresh?.dataUrl}
+                preload="metadata"
+                ref={videoRef}
+                src={loadedVideoUrl}
+              />
+            ) : null}
+            {previewFrameFresh ? (
+              <img
+                alt={copy.media.previewAlt}
+                className="video-frame__exact-preview"
+                src={previewFrameFresh.dataUrl}
+              />
+            ) : null}
+            {showPreviewSyncState ? (
+              <div className="video-frame__syncing">
+                <p>{previewPrimaryMessage}</p>
+                <p className="muted">{previewSecondaryMessage}</p>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="video-frame__empty">
             <p>{copy.media.emptyState}</p>
@@ -185,15 +257,17 @@ export const MediaRangePane = () => {
       <div className="player-toolbar">
         <div className="player-toolbar__cluster">
           <button
-            disabled={busy || !loaded}
+            disabled={busy || !canPlayVideo}
             onClick={() => {
               if (!videoRef.current) {
                 return;
               }
 
               if (videoRef.current.paused) {
-                void videoRef.current.play().catch(() => {
+                void videoRef.current.play().catch((error) => {
                   setIsPlaying(false);
+                  const reason = error instanceof Error ? ` ${error.message}` : "";
+                  setPlayerError(`${copy.media.playerLoadError}${reason}`);
                 });
                 return;
               }
@@ -205,7 +279,7 @@ export const MediaRangePane = () => {
             {isPlaying ? copy.media.pause : copy.media.play}
           </button>
           <button
-            disabled={busy || !loaded}
+            disabled={busy || !canPlayVideo}
             onClick={() => {
               if (videoRef.current && !videoRef.current.paused) {
                 videoRef.current.pause();
@@ -219,8 +293,8 @@ export const MediaRangePane = () => {
           </button>
         </div>
         <div className="player-toolbar__cluster player-toolbar__cluster--meta">
-          <span>{formatTimeMs(playerPlayheadMs)} / {formatTimeMs(durationMs)}</span>
-          <span>{copy.media.frameLabel} {previewFrameIndex}</span>
+          <span>{formatTimeMs(effectivePlayheadMs)} / {formatTimeMs(durationMs)}</span>
+          <span>{copy.media.frameLabel} {displayFrameNumber(previewFrameIndex, project.video.frameCount)}</span>
         </div>
       </div>
 
@@ -243,6 +317,7 @@ export const MediaRangePane = () => {
               scrubbedPlayheadMsRef.current = nextMs;
               setPlayerPlayheadMs(nextMs);
               applyVideoTime(nextMs);
+              setPlayheadMs(nextMs);
             }}
             onKeyUp={() => {
               if (isScrubbingRef.current) {
@@ -303,12 +378,12 @@ export const MediaRangePane = () => {
           <span className="muted timeline__hint">{copy.media.startPositionHint}</span>
         </label>
         <div className="stats-row">
-          <span>{copy.media.playhead} {formatTimeMs(playerPlayheadMs)}</span>
+          <span>{copy.media.playhead} {formatTimeMs(effectivePlayheadMs)}</span>
           <span>
             {copy.media.rangeLabel} {formatTimeMs(project.range.startMs)} - {formatTimeMs(project.range.endMs)}
           </span>
           <span>{copy.media.startPosition} +{formatTimeMs(sampleOffsetMs)}</span>
-          <span>{copy.media.frameLabel} {previewFrameIndex}</span>
+          <span>{copy.media.frameLabel} {displayFrameNumber(previewFrameIndex, project.video.frameCount)}</span>
         </div>
       </div>
 
@@ -436,11 +511,12 @@ export const MediaRangePane = () => {
           >
             {copy.editor.fullFidelity}
           </button>
-          <button disabled={busy || !loadedVideoUrl} onClick={autoFill} type="button">{copy.media.autoFill}</button>
+          <button disabled={busy || !loaded} onClick={autoFill} type="button">{copy.media.autoFill}</button>
         </div>
       </div>
 
       {desktopRuntime ? <p className="muted">{copy.media.backendPreviewHint}</p> : null}
+      {playerError ? <p className="notice notice--warning">{playerError}</p> : null}
       {previewError ? <p className="notice notice--warning">{previewError}</p> : null}
       {alert ? <p className={`notice notice--${alert.tone}`}>{alert.message}</p> : null}
     </section>

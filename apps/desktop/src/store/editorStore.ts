@@ -7,12 +7,15 @@
 import {
   autoFillTiles,
   buildDiagnosticsBundle,
+  clampFrameIndex,
   clampPlayheadMs,
   createStarterProject,
   estimateFullFidelity,
+  frameIndexAtTimeMs,
   formatTimeMs,
   parseTimeDelta,
   reshapeTilesForGrid,
+  seekTimeForFrameIndex,
   stepByFrames,
   stepByTime,
   validateProject,
@@ -30,12 +33,16 @@ import {
   diagnosticsBundle,
   exportProject,
   fetchPreviewFrame,
+  fetchSheetPreview,
   isDesktopRuntime,
   loadProject,
+  playbackBlobUrl,
+  prepareVideoPlayback,
   probeVideo,
   projectFileUrl,
   saveProject,
   sharpestNeighbours,
+  type SheetPreview,
 } from "../lib/backend";
 
 /** User-facing notification surfaced in the editor panes. */
@@ -46,10 +53,14 @@ export interface EditorState {
   project: ProjectFile;
   selectedTileId: string | null;
   loadedVideoUrl: string | null;
+  playbackPreparing: boolean;
   loadedVideoSizeBytes: number;
   previewFrame: PreviewFrame | null;
   previewBusy: boolean;
   previewError: string | null;
+  sheetPreview: SheetPreview | null;
+  sheetPreviewBusy: boolean;
+  sheetPreviewError: string | null;
   alert: EditorAlert;
   diagnostics: DiagnosticsBundle;
   busy: boolean;
@@ -74,6 +85,7 @@ export interface EditorState {
   setExportScale: (scale: number) => void;
   setWatermarkText: (value: string) => void;
   selectTile: (tileId: string) => void;
+  focusTile: (tileId: string) => void;
   toggleTilePin: (tileId: string) => void;
   fineTuneTile: (tileId: string, deltaMs: number) => void;
   setTileManualFrame: (tileId: string, frameIndex: number) => void;
@@ -83,13 +95,47 @@ export interface EditorState {
   loadProjectFromPath: (path: string) => Promise<void>;
   exportProjectToPath: (path?: string) => Promise<string | null>;
   refreshPreviewFrame: (maxWidth?: number) => Promise<void>;
+  refreshSheetPreview: (maxWidth?: number) => Promise<void>;
 }
 
 const starterProject = createStarterProject();
 let previewRequestSequence = 0;
+let sheetPreviewRequestSequence = 0;
+let playbackRequestSequence = 0;
+let managedVideoUrl: string | null = null;
 
 /** Keeps browser-only diagnostics available when the Rust shell is not active. */
 const localDiagnostics = (project: ProjectFile): DiagnosticsBundle => buildDiagnosticsBundle(project);
+
+const errorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+const replaceManagedVideoUrl = (url: string | null): string | null => {
+  if (managedVideoUrl && managedVideoUrl !== url) {
+    URL.revokeObjectURL(managedVideoUrl);
+  }
+
+  managedVideoUrl = url?.startsWith("blob:") ? url : null;
+  return url;
+};
 
 /** Recomputes derived store fields after any project mutation. */
 const syncState = (project: ProjectFile, selectedTileId: string | null = null) => ({
@@ -161,12 +207,26 @@ const inheritImportedProject = (current: ProjectFile, imported: ProjectFile): Pr
       range.endMs,
       range.sampleStartMs,
       imported.video.fps,
+      imported.video.frameCount,
     ),
     style: current.style,
     watermark: current.watermark,
     export: current.export,
     batch: current.batch,
   };
+};
+
+const resolvedTileTimeMs = (
+  project: ProjectFile,
+  tile: ProjectFile["tiles"][number],
+): number => {
+  const durationMs = project.video.durationMs ?? 60_000;
+  const baseTimeMs =
+    tile.selection.kind === "manual"
+      ? seekTimeForFrameIndex(tile.selection.frameIndex, project.video.fps, durationMs)
+      : 0;
+
+  return clampPlayheadMs(baseTimeMs + tile.fineTuneOffsetMs, Math.max(durationMs - 1, 0));
 };
 
 /**
@@ -179,10 +239,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   project: starterProject,
   selectedTileId: starterProject.tiles[0]?.id ?? null,
   loadedVideoUrl: null,
+  playbackPreparing: false,
   loadedVideoSizeBytes: 0,
   previewFrame: null,
   previewBusy: false,
   previewError: null,
+  sheetPreview: null,
+  sheetPreviewBusy: false,
+  sheetPreviewError: null,
   alert: null,
   diagnostics: localDiagnostics(starterProject),
   busy: false,
@@ -196,35 +260,94 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
 
     set({
-      loadedVideoUrl: URL.createObjectURL(file),
+      loadedVideoUrl: replaceManagedVideoUrl(URL.createObjectURL(file)),
+      playbackPreparing: false,
       loadedVideoSizeBytes: file.size,
       previewFrame: null,
       previewBusy: false,
       previewError: null,
+      sheetPreview: null,
+      sheetPreviewBusy: false,
+      sheetPreviewError: null,
       ...syncState(nextProject, get().selectedTileId),
       alert: { tone: "info", message: `Loaded ${file.name}` },
     });
   },
   loadVideoFromPath: async (path) => {
-    set({ busy: true, alert: null, previewFrame: null, previewBusy: false, previewError: null });
+    set({
+      busy: true,
+      alert: null,
+      previewFrame: null,
+      previewBusy: false,
+      previewError: null,
+      sheetPreview: null,
+      sheetPreviewBusy: false,
+      sheetPreviewError: null,
+    });
     try {
       const project = inheritImportedProject(get().project, await probeVideo(path));
+      const requestId = playbackRequestSequence + 1;
+      playbackRequestSequence = requestId;
       set({
         busy: false,
-        loadedVideoUrl: projectFileUrl(path),
+        loadedVideoUrl: null,
+        playbackPreparing: isDesktopRuntime(),
         loadedVideoSizeBytes: 0,
         previewFrame: null,
         previewBusy: false,
         previewError: null,
+        sheetPreview: null,
+        sheetPreviewBusy: false,
+        sheetPreviewError: null,
         ...syncState(project, get().selectedTileId),
-        alert: { tone: "info", message: `Loaded ${path}` },
+        alert: {
+          tone: "info",
+          message: isDesktopRuntime()
+            ? `Loaded ${path}. Preparing preview playback...`
+            : `Loaded ${path}`,
+        },
       });
+
+      if (isDesktopRuntime()) {
+        void prepareVideoPlayback(path)
+          .then((playback) => {
+            if (requestId !== playbackRequestSequence) {
+              return;
+            }
+
+            set({
+              loadedVideoUrl: replaceManagedVideoUrl(playbackBlobUrl(playback)),
+              playbackPreparing: false,
+              alert: { tone: "info", message: `Loaded ${path}` },
+            });
+          })
+          .catch((error) => {
+            if (requestId !== playbackRequestSequence) {
+              return;
+            }
+
+            set({
+              loadedVideoUrl: replaceManagedVideoUrl(projectFileUrl(path)),
+              playbackPreparing: false,
+              alert: {
+                tone: "warning",
+                message: `${errorMessage(
+                  error,
+                  "Failed to prepare preview playback.",
+                )} Falling back to direct playback.`,
+              },
+            });
+          });
+      } else {
+        set({ loadedVideoUrl: replaceManagedVideoUrl(path), playbackPreparing: false });
+      }
     } catch (error) {
       set({
         busy: false,
+        playbackPreparing: false,
         alert: {
           tone: "warning",
-          message: error instanceof Error ? error.message : "Failed to load video.",
+          message: errorMessage(error, "Failed to load video."),
         },
       });
     }
@@ -259,7 +382,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playback: {
         ...get().project.playback,
         playheadMs: nextPlayheadMs,
-        activeFrameIndex: Math.round((nextPlayheadMs / 1000) * fps),
+        activeFrameIndex: clampFrameIndex(
+          frameIndexAtTimeMs(nextPlayheadMs, fps),
+          get().project.video.frameCount,
+        ),
       },
     };
     set(syncState(nextProject, get().selectedTileId));
@@ -415,6 +541,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         project.range.endMs,
         project.range.sampleStartMs,
         project.video.fps,
+        project.video.frameCount,
       ),
     };
     set(syncState(nextProject, get().selectedTileId));
@@ -432,6 +559,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         project.range.endMs,
         project.range.sampleStartMs,
         project.video.fps,
+        project.video.frameCount,
       ),
     };
     set(syncState(nextProject, selectedTileId));
@@ -496,6 +624,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set(syncState(nextProject, selectedTileId));
   },
   selectTile: (tileId) => set({ selectedTileId: tileId }),
+  focusTile: (tileId) => {
+    const { project } = get();
+    const tile = project.tiles.find((entry) => entry.id === tileId);
+    if (!tile) {
+      return;
+    }
+
+    get().setPlayheadMs(resolvedTileTimeMs(project, tile));
+    set({ selectedTileId: tileId });
+  },
   toggleTilePin: (tileId) => {
     const nextProject = {
       ...get().project,
@@ -518,14 +656,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   setTileManualFrame: (tileId, frameIndex) => {
     const fps = get().project.video.fps ?? 24;
-    const timeMs = Math.round((frameIndex / fps) * 1000);
+    const normalizedFrameIndex = clampFrameIndex(frameIndex, get().project.video.frameCount);
+    const timeMs = seekTimeForFrameIndex(
+      normalizedFrameIndex,
+      fps,
+      get().project.video.durationMs ?? 60_000,
+    );
     const nextProject = {
       ...get().project,
       tiles: get().project.tiles.map((tile) =>
         tile.id === tileId
           ? {
               ...tile,
-              selection: { kind: "manual" as const, frameIndex, timeMs },
+              selection: { kind: "manual" as const, frameIndex: normalizedFrameIndex, timeMs },
               pinned: true,
             }
           : tile,
@@ -623,22 +766,67 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const diagnostics = isDesktopRuntime()
         ? await diagnosticsBundle(project)
         : localDiagnostics(project);
+      const requestId = playbackRequestSequence + 1;
+      playbackRequestSequence = requestId;
       set({
         busy: false,
-        loadedVideoUrl: project.video.path ? projectFileUrl(project.video.path) : null,
+        loadedVideoUrl: null,
+        playbackPreparing: isDesktopRuntime() && Boolean(project.video.path),
         previewFrame: null,
         previewBusy: false,
         previewError: null,
+        sheetPreview: null,
+        sheetPreviewBusy: false,
+        sheetPreviewError: null,
         ...syncState(project, get().selectedTileId),
         diagnostics,
-        alert: { tone: "info", message: `Loaded project from ${path}` },
+        alert: {
+          tone: "info",
+          message:
+            isDesktopRuntime() && project.video.path
+              ? `Loaded project from ${path}. Preparing preview playback...`
+              : `Loaded project from ${path}`,
+        },
       });
+
+      if (isDesktopRuntime() && project.video.path) {
+        void prepareVideoPlayback(project.video.path)
+          .then((playback) => {
+            if (requestId !== playbackRequestSequence) {
+              return;
+            }
+
+            set({
+              loadedVideoUrl: replaceManagedVideoUrl(playbackBlobUrl(playback)),
+              playbackPreparing: false,
+              alert: { tone: "info", message: `Loaded project from ${path}` },
+            });
+          })
+          .catch((error) => {
+            if (requestId !== playbackRequestSequence) {
+              return;
+            }
+
+            set({
+              loadedVideoUrl: replaceManagedVideoUrl(projectFileUrl(project.video.path)),
+              playbackPreparing: false,
+              alert: {
+                tone: "warning",
+                message: `${errorMessage(
+                  error,
+                  "Failed to prepare preview playback.",
+                )} Falling back to direct playback.`,
+              },
+            });
+          });
+      }
     } catch (error) {
       set({
         busy: false,
+        playbackPreparing: false,
         alert: {
           tone: "warning",
-          message: error instanceof Error ? error.message : "Failed to load project.",
+          message: errorMessage(error, "Failed to load project."),
         },
       });
     }
@@ -657,7 +845,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         busy: false,
         alert: {
           tone: "warning",
-          message: error instanceof Error ? error.message : "Export failed.",
+          message: errorMessage(error, "Export failed."),
         },
       });
       return null;
@@ -685,10 +873,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         return;
       }
 
+      const correctedProject =
+        previewFrame.timeMs !== project.playback.playheadMs ||
+        previewFrame.frameIndex !== project.playback.activeFrameIndex
+          ? {
+              ...project,
+              playback: {
+                ...project.playback,
+                playheadMs: previewFrame.timeMs,
+                activeFrameIndex: previewFrame.frameIndex,
+              },
+            }
+          : project;
+
       set({
         previewFrame,
         previewBusy: false,
         previewError: null,
+        ...syncState(correctedProject, get().selectedTileId),
       });
     } catch (error) {
       if (requestId !== previewRequestSequence) {
@@ -697,7 +899,45 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       set({
         previewBusy: false,
-        previewError: error instanceof Error ? error.message : "Failed to refresh preview.",
+        previewError: errorMessage(error, "Failed to refresh preview."),
+      });
+    }
+  },
+  refreshSheetPreview: async (maxWidth = 1080) => {
+    if (!isDesktopRuntime()) {
+      set({ sheetPreview: null, sheetPreviewBusy: false, sheetPreviewError: null });
+      return;
+    }
+
+    const { project } = get();
+    if (!project.video.path || project.video.path === "unloaded-video.mp4") {
+      set({ sheetPreview: null, sheetPreviewBusy: false, sheetPreviewError: null });
+      return;
+    }
+
+    const requestId = sheetPreviewRequestSequence + 1;
+    sheetPreviewRequestSequence = requestId;
+    set({ sheetPreviewBusy: true, sheetPreviewError: null });
+
+    try {
+      const sheetPreview = await fetchSheetPreview(project, maxWidth);
+      if (requestId !== sheetPreviewRequestSequence) {
+        return;
+      }
+
+      set({
+        sheetPreview,
+        sheetPreviewBusy: false,
+        sheetPreviewError: null,
+      });
+    } catch (error) {
+      if (requestId !== sheetPreviewRequestSequence) {
+        return;
+      }
+
+      set({
+        sheetPreviewBusy: false,
+        sheetPreviewError: errorMessage(error, "Failed to refresh sheet preview."),
       });
     }
   },

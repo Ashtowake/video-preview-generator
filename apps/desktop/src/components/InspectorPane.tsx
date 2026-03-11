@@ -1,4 +1,4 @@
-import { formatTimeMs } from "@video-preview/domain";
+import { displayFrameNumber, formatTimeMs } from "@video-preview/domain";
 
 import { useI18n } from "../i18n/provider";
 import { useEditorStore } from "../store/editorStore";
@@ -14,7 +14,7 @@ export const InspectorPane = () => {
     setExportFormat,
     setExportScale,
     setWatermarkText,
-    selectTile,
+    focusTile,
     toggleTilePin,
     fineTuneTile,
     setTileManualFrame,
@@ -24,6 +24,14 @@ export const InspectorPane = () => {
   const { copy } = useI18n();
 
   const selectedTile = project.tiles.find((tile) => tile.id === selectedTileId) ?? project.tiles[0];
+  const selectedTileIndex = selectedTile
+    ? project.tiles.findIndex((tile) => tile.id === selectedTile.id)
+    : -1;
+  const previousTile = selectedTileIndex > 0 ? project.tiles[selectedTileIndex - 1] : null;
+  const nextTile =
+    selectedTileIndex >= 0 && selectedTileIndex < project.tiles.length - 1
+      ? project.tiles[selectedTileIndex + 1]
+      : null;
 
   return (
     <section className="panel">
@@ -36,15 +44,32 @@ export const InspectorPane = () => {
 
       <div className="inspector-section">
         <h3>{copy.inspector.selectedTile}</h3>
-        <select disabled={busy} onChange={(event) => selectTile(event.currentTarget.value)} value={selectedTile?.id}>
-          {project.tiles.map((tile) => (
-            <option key={tile.id} value={tile.id}>
-              {tile.id}
-            </option>
-          ))}
-        </select>
         {selectedTile ? (
           <>
+            <div className="selected-tile-card">
+              <strong>{selectedTile.id}</strong>
+              <span>
+                {selectedTile.selection.kind === "manual"
+                  ? `${copy.canvas.frame} ${displayFrameNumber(selectedTile.selection.frameIndex, project.video.frameCount)}`
+                  : copy.canvas.auto}
+              </span>
+            </div>
+            <div className="button-row">
+              <button
+                disabled={busy || !previousTile}
+                onClick={() => previousTile && focusTile(previousTile.id)}
+                type="button"
+              >
+                {copy.inspector.previousTile}
+              </button>
+              <button
+                disabled={busy || !nextTile}
+                onClick={() => nextTile && focusTile(nextTile.id)}
+                type="button"
+              >
+                {copy.inspector.nextTile}
+              </button>
+            </div>
             <div className="stats-row">
               <span>{copy.inspector.span} {selectedTile.span.columnSpan}x{selectedTile.span.rowSpan}</span>
               <span>{copy.inspector.fineTune} {formatTimeMs(Math.abs(selectedTile.fineTuneOffsetMs))}</span>
@@ -64,10 +89,17 @@ export const InspectorPane = () => {
               <span>{copy.inspector.manualFrame}</span>
               <input
                 disabled={busy}
-                min={0}
-                onChange={(event) => setTileManualFrame(selectedTile.id, Number(event.currentTarget.value))}
+                max={project.video.frameCount}
+                min={1}
+                onChange={(event) =>
+                  setTileManualFrame(selectedTile.id, Math.max(0, Number(event.currentTarget.value) - 1))
+                }
                 type="number"
-                value={selectedTile.selection.kind === "manual" ? selectedTile.selection.frameIndex : 0}
+                value={
+                  selectedTile.selection.kind === "manual"
+                    ? displayFrameNumber(selectedTile.selection.frameIndex, project.video.frameCount)
+                    : 1
+                }
               />
             </label>
             <div className="button-row">

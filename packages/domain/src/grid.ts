@@ -1,5 +1,10 @@
 import type { GridSettings, ProjectTile, TileSelection, ValidationIssue } from "./types";
-import { evenlySpacedSamplesFromStart } from "./seek";
+import {
+  clampFrameIndex,
+  evenlySpacedSamplesFromStart,
+  frameIndexAtTimeMs,
+  seekTimeForFrameIndex,
+} from "./seek";
 
 /**
  * Rebuilds the tile list for a new grid size while preserving per-tile selection state where
@@ -41,6 +46,7 @@ export const autoFillTiles = (
   rangeEndMs: number,
   sampleStartMs: number,
   fps: number | undefined,
+  frameCount?: number,
 ): ProjectTile[] => {
   const nextTiles = tiles.map((tile) => ({ ...tile }));
   const autoTileIndices = nextTiles.flatMap((tile, index) => (tile.pinned ? [] : [index]));
@@ -53,11 +59,12 @@ export const autoFillTiles = (
 
   autoTileIndices.forEach((tileIndex, sampleIndex) => {
     const timeMs = samples[sampleIndex] ?? rangeStartMs;
-    const frameIndex = fps ? Math.round((timeMs / 1000) * fps) : 0;
+    const frameIndex = clampFrameIndex(frameIndexAtTimeMs(timeMs, fps), frameCount);
+    const frameTimeMs = seekTimeForFrameIndex(frameIndex, fps, Math.max(rangeEndMs, rangeStartMs + 1));
 
     nextTiles[tileIndex] = {
       ...nextTiles[tileIndex],
-      selection: { kind: "manual", frameIndex, timeMs },
+      selection: { kind: "manual", frameIndex, timeMs: frameTimeMs },
       fineTuneOffsetMs: 0,
     };
   });
@@ -111,7 +118,7 @@ export const validateGridSpans = (
 
 export const inferTileLabel = (tile: ProjectTile): string => {
   if (tile.selection.kind === "manual") {
-    return `Frame ${tile.selection.frameIndex}`;
+    return `Frame ${tile.selection.frameIndex + 1}`;
   }
 
   return "Auto";

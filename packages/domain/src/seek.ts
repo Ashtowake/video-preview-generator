@@ -46,6 +46,54 @@ export const formatTimeMs = (timeMs: number): string => {
 export const clampPlayheadMs = (playheadMs: number, durationMs: number): number =>
   Math.min(Math.max(playheadMs, 0), durationMs);
 
+/** Clamps a computed frame index to the actual frame range when frame count is known. */
+export const clampFrameIndex = (
+  frameIndex: number,
+  frameCount: number | undefined,
+): number => {
+  const safeIndex = Math.max(0, Math.round(frameIndex));
+  if (!frameCount || frameCount <= 0) {
+    return safeIndex;
+  }
+
+  return Math.min(safeIndex, Math.max(0, Math.round(frameCount) - 1));
+};
+
+/** Formats a zero-based frame index for user-facing labels. */
+export const displayFrameNumber = (
+  frameIndex: number,
+  frameCount: number | undefined,
+): number => clampFrameIndex(frameIndex, frameCount) + 1;
+
+/** Maps a timestamp to the nearest frame position used by the exact-preview path. */
+export const frameIndexAtTimeMs = (timeMs: number, fps: number | undefined): number => {
+  if (!fps || fps <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((Math.max(timeMs, 0) / 1000) * fps));
+};
+
+/** Returns a seek timestamp at the start of the requested frame. */
+export const seekTimeForFrameIndex = (
+  frameIndex: number,
+  fps: number | undefined,
+  durationMs: number,
+): number => {
+  if (!fps || fps <= 0) {
+    return 0;
+  }
+
+  const safeFrameIndex = Math.max(0, Math.floor(frameIndex));
+  if (safeFrameIndex === 0) {
+    return 0;
+  }
+
+  const frameStartMs = Math.round(((safeFrameIndex / fps) * 1000));
+  const latestSeekMs = Math.max(0, durationMs - 1);
+  return clampPlayheadMs(frameStartMs, latestSeekMs);
+};
+
 export const stepByTime = (playheadMs: number, deltaMs: number, durationMs: number): number =>
   clampPlayheadMs(playheadMs + deltaMs, durationMs);
 
@@ -59,7 +107,8 @@ export const stepByFrames = (
     return playheadMs;
   }
 
-  return stepByTime(playheadMs, Math.round((frames / fps) * 1000), durationMs);
+  const currentFrameIndex = frameIndexAtTimeMs(playheadMs, fps);
+  return seekTimeForFrameIndex(currentFrameIndex + frames, fps, durationMs);
 };
 
 /** Evenly spreads sample times inside the selected range using center-of-bin spacing. */

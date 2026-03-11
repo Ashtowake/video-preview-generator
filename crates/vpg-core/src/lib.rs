@@ -17,10 +17,10 @@ pub use project::{
     ProjectFile, ProjectStyle, ProjectTile, TileSelection, TileSpan, TimeRange, VideoSource,
     WatermarkImage, WatermarkSettings, WatermarkText,
 };
-pub use render::ExportResult;
+pub use render::{ExportResult, SheetPreview};
 pub use seek::{
-    center_of_bin_samples, clamp_playhead_ms, evenly_spaced_samples_from_start,
-    parse_time_delta, step_by_frames, step_by_time,
+    center_of_bin_samples, clamp_frame_index, clamp_playhead_ms, display_frame_number,
+    evenly_spaced_samples_from_start, parse_time_delta, step_by_frames, step_by_time,
 };
 pub use services::{DecodeEstimate, MediaService, RenderPlan, ServiceStatus};
 pub use validation::{validate_project, ValidationIssue, ValidationLevel};

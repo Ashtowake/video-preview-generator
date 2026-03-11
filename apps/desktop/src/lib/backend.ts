@@ -11,6 +11,19 @@ import type {
   ProjectFile,
 } from "@video-preview/domain";
 
+/** Downscaled rendered contact-sheet preview returned from the Rust backend. */
+export interface SheetPreview {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/** Prepared preview media returned from Rust for embedded playback. */
+export interface PreparedPlayback {
+  mimeType: string;
+  base64Data: string;
+}
+
 /** Returns `true` when the app is running inside the Tauri desktop shell. */
 export const isDesktopRuntime = (): boolean => isTauri();
 
@@ -75,6 +88,22 @@ export const savePathDialog = async (
 export const probeVideo = async (videoPath: string): Promise<ProjectFile> =>
   invoke("probe_video", { videoPath });
 
+/** Creates or reuses a cached playback proxy suitable for the embedded preview player. */
+export const prepareVideoPlayback = async (videoPath: string): Promise<PreparedPlayback> =>
+  invoke("prepare_video_playback", { videoPath });
+
+/** Converts prepared playback media into a blob URL that the embedded player can stream. */
+export const playbackBlobUrl = (playback: PreparedPlayback): string => {
+  const binary = atob(playback.base64Data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return URL.createObjectURL(new Blob([bytes], { type: playback.mimeType }));
+};
+
 /** Persists a project JSON file through the Rust shell. */
 export const saveProject = async (path: string, project: ProjectFile): Promise<void> =>
   invoke("save_project", { path, project });
@@ -93,6 +122,12 @@ export const fetchPreviewFrame = async (
   timeMs: number,
   maxWidth = 640,
 ): Promise<PreviewFrame> => invoke("preview_frame", { project, timeMs, maxWidth });
+
+/** Requests a rendered preview of the current sheet layout. */
+export const fetchSheetPreview = async (
+  project: ProjectFile,
+  maxWidth = 960,
+): Promise<SheetPreview> => invoke("render_sheet_preview", { project, maxWidth });
 
 /** Runs the sharpness-neighbour search for the selected tile ids. */
 export const sharpestNeighbours = async (

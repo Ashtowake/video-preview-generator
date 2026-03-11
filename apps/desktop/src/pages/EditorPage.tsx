@@ -5,6 +5,7 @@ import { InspectorPane } from "../components/InspectorPane";
 import { MediaRangePane } from "../components/MediaRangePane";
 import { useI18n } from "../i18n/provider";
 import { isDesktopRuntime, openProjectDialog, savePathDialog } from "../lib/backend";
+import { displayPathName } from "../lib/sheetLayout";
 import { useEditorStore } from "../store/editorStore";
 
 const defaultProjectPath = (videoPath: string) =>
@@ -27,7 +28,7 @@ export const EditorPage = () => {
       <header className="page__header">
         <div>
           <p className="eyebrow">{copy.editor.eyebrow}</p>
-          <h2>{project.video.path}</h2>
+          <h2>{displayPathName(project.video.path)}</h2>
         </div>
         <div className="status-stack">
           <button
@@ -96,8 +97,10 @@ export const EditorPage = () => {
 
       <div className="editor-layout">
         <MediaRangePane />
-        <GridCanvas />
-        <InspectorPane />
+        <div className="workspace-stack">
+          <GridCanvas />
+          <InspectorPane />
+        </div>
       </div>
     </div>
   );

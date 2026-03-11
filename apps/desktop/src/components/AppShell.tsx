@@ -6,10 +6,13 @@ import { useI18n } from "../i18n/provider";
 export const AppShell = ({ children }: PropsWithChildren) => {
   const { copy, locale, locales, setLocale } = useI18n();
 
-  const navItems = [
+  const primaryItems = [
     { path: "/editor", label: copy.nav.editor },
     { path: "/preferences", label: copy.nav.preferences },
     { path: "/updates", label: copy.nav.updates },
+  ];
+
+  const menuItems = [
     { path: "/diagnostics", label: copy.nav.diagnostics },
     { path: "/help", label: copy.nav.help },
     { path: "/keyboard-shortcuts", label: copy.nav.shortcuts },
@@ -22,14 +25,13 @@ export const AppShell = ({ children }: PropsWithChildren) => {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar__brand">
+      <header className="app-bar">
+        <div className="app-bar__brand">
           <p className="eyebrow">{copy.shell.eyebrow}</p>
           <h1>{copy.shell.title}</h1>
-          <p className="muted">{copy.shell.description}</p>
         </div>
-        <nav className="sidebar__nav" aria-label="Primary">
-          {navItems.map((item) => (
+        <nav aria-label="Primary" className="app-bar__nav">
+          {primaryItems.map((item) => (
             <NavLink
               key={item.path}
               className={({ isActive }) => `nav-link${isActive ? " nav-link--active" : ""}`}
@@ -38,8 +40,22 @@ export const AppShell = ({ children }: PropsWithChildren) => {
               {item.label}
             </NavLink>
           ))}
+          <details className="app-menu">
+            <summary>{copy.shell.menuLabel}</summary>
+            <div className="app-menu__content">
+              {menuItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  className={({ isActive }) => `menu-link${isActive ? " menu-link--active" : ""}`}
+                  to={item.path}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          </details>
         </nav>
-        <label className="sidebar__locale">
+        <label className="app-bar__locale">
           <span>{copy.shell.languageLabel}</span>
           <select onChange={(event) => setLocale(event.currentTarget.value as typeof locale)} value={locale}>
             {locales.map((entry) => (
@@ -49,7 +65,7 @@ export const AppShell = ({ children }: PropsWithChildren) => {
             ))}
           </select>
         </label>
-      </aside>
+      </header>
       <main className="content">{children}</main>
     </div>
   );

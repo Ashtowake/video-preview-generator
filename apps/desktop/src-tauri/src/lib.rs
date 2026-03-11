@@ -1,3 +1,5 @@
+mod mpv_transport;
+mod playback_proxy;
 mod preview_cache;
 
 use std::fs;
@@ -6,13 +8,17 @@ use std::sync::Mutex;
 use tauri::Manager;
 use vpg_core::{
     DiagnosticsBundle, ExportResult, MediaService, PreviewFrame, ProjectFile, RenderPlan,
+    SheetPreview,
 };
 
+use crate::playback_proxy::{prepare_playback_payload, PreparedPlayback};
 use crate::preview_cache::{PreviewCache, PreviewCacheKey};
+use crate::mpv_transport::{preview_frame_from_transport, MpvTransportState};
 
 #[derive(Default)]
 struct AppState {
     preview_cache: Mutex<PreviewCache>,
+    transport: Mutex<MpvTransportState>,
 }
 
 #[tauri::command]
@@ -40,12 +46,21 @@ fn probe_video(video_path: String) -> Result<ProjectFile, String> {
 }
 
 #[tauri::command]
+fn prepare_video_playback(
+    app: tauri::AppHandle,
+    video_path: String,
+) -> Result<PreparedPlayback, String> {
+    prepare_playback_payload(&app, &video_path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn estimate_full_fidelity(project: ProjectFile) -> vpg_core::DecodeEstimate {
     MediaService.estimate_full_fidelity(&project)
 }
 
 #[tauri::command]
 fn preview_frame(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     project: ProjectFile,
     time_ms: u64,
@@ -63,8 +78,8 @@ fn preview_frame(
         return Ok(frame);
     }
 
-    let frame = MediaService
-        .preview_frame(&project, time_ms, max_width)
+    let frame = preview_frame_from_transport(&app, &state.transport, &project, time_ms)
+        .or_else(|_| MediaService.preview_frame(&project, time_ms, max_width))
         .map_err(|error| error.to_string())?;
 
     state
@@ -97,6 +112,16 @@ fn render_plan(project: ProjectFile) -> RenderPlan {
 }
 
 #[tauri::command]
+fn render_sheet_preview(
+    project: ProjectFile,
+    max_width: Option<u32>,
+) -> Result<SheetPreview, String> {
+    MediaService
+        .render_preview(&project, max_width)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn export_project(
     project: ProjectFile,
     output_path: Option<String>,
@@ -121,6 +146,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_mpv::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -132,6 +158,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             starter_project,
             probe_video,
+            prepare_video_playback,
             save_project,
             load_project,
             estimate_full_fidelity,
@@ -139,6 +166,7 @@ pub fn run() {
             find_sharpest_neighbours,
             diagnostics_bundle,
             render_plan,
+            render_sheet_preview,
             export_project,
             release_notes
         ])

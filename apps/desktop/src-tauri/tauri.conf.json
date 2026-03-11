@@ -21,6 +21,9 @@
       }
     ],
     "security": {
+      "assetProtocol": {
+        "enable": true
+      },
       "capabilities": ["default"]
     }
   },

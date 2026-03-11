@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
 use font8x8::{UnicodeFonts, BASIC_FONTS};
 use image::imageops::{overlay, resize, FilterType};
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
@@ -10,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::media::{effective_tile_time_ms, extract_frame_image};
 use crate::project::{ExportFormat, ProjectFile, TileSelection};
+use crate::seek::display_frame_number;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -18,10 +21,19 @@ pub struct ExportResult {
     pub output_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+/// Downscaled preview of the rendered contact sheet used by the desktop editor.
+pub struct SheetPreview {
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Renders and writes the final contact sheet to disk.
 pub fn export_sheet(project: &ProjectFile, output_override: Option<&str>) -> Result<ExportResult> {
     let output_path = resolve_output_path(project, output_override)?;
-    let image = render_project(project)?;
+    let image = render_project(project, false)?;
     let format = match project.export.format {
         ExportFormat::Png => ImageFormat::Png,
         ExportFormat::Jpeg => ImageFormat::Jpeg,
@@ -36,11 +48,42 @@ pub fn export_sheet(project: &ProjectFile, output_override: Option<&str>) -> Res
     })
 }
 
+/// Renders the current project into a PNG data URL sized for interactive preview.
+pub fn render_preview(project: &ProjectFile, max_width: Option<u32>) -> Result<SheetPreview> {
+    let rendered = render_project(project, true)?;
+    let preview = if let Some(max_width) = max_width {
+        if max_width > 0 && rendered.width() > max_width {
+            DynamicImage::ImageRgba8(resize(
+                &rendered.to_rgba8(),
+                max_width,
+                ((rendered.height() as f32 / rendered.width() as f32) * max_width as f32).round()
+                    as u32,
+                FilterType::Lanczos3,
+            ))
+        } else {
+            rendered
+        }
+    } else {
+        rendered
+    };
+
+    let mut bytes = Vec::new();
+    preview
+        .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
+        .context("failed to encode sheet preview as PNG")?;
+
+    Ok(SheetPreview {
+        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
+        width: preview.width(),
+        height: preview.height(),
+    })
+}
+
 /// Renders the current project into an in-memory raster image.
 ///
 /// The renderer is intentionally owned by Rust so the desktop app and CLI share identical
 /// layout, timestamp, watermark, and styling behavior.
-pub fn render_project(project: &ProjectFile) -> Result<DynamicImage> {
+pub fn render_project(project: &ProjectFile, fast_seek: bool) -> Result<DynamicImage> {
     let scale = project.export.scale.max(0.25);
     let aspect_ratio = source_aspect_ratio(project);
     let (cell_width, cell_height) = derive_cell_size(scale, aspect_ratio);
@@ -75,7 +118,10 @@ pub fn render_project(project: &ProjectFile) -> Result<DynamicImage> {
         );
         let metadata = format!(
             "{}  |  {} ms  |  {}x{}  |  {:.2} fps",
-            project.video.path,
+            Path::new(&project.video.path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(&project.video.path),
             project.video.duration_ms.unwrap_or_default(),
             project.video.width.unwrap_or_default(),
             project.video.height.unwrap_or_default(),
@@ -97,8 +143,12 @@ pub fn render_project(project: &ProjectFile) -> Result<DynamicImage> {
         let y = outer + metadata_height + tile.span.row * (cell_height + gutter);
         let width = tile.span.column_span * cell_width + (tile.span.column_span - 1) * gutter;
         let height = tile.span.row_span * cell_height + (tile.span.row_span - 1) * gutter;
-        let frame =
-            extract_frame_image(Path::new(&project.video.path), time_ms, Some(width.max(1)))?;
+        let frame = extract_frame_image(
+            Path::new(&project.video.path),
+            time_ms,
+            Some(width.max(1)),
+            fast_seek,
+        )?;
         let tile_image = prepare_tile_image(project, &frame, width, height);
 
         if project.style.frame_shadow_px > 0 {
@@ -117,7 +167,9 @@ pub fn render_project(project: &ProjectFile) -> Result<DynamicImage> {
 
         if project.style.show_timestamps {
             let label = match tile.selection {
-                TileSelection::ManualFrame { frame_index, .. } => format!("#{frame_index}"),
+                TileSelection::ManualFrame { frame_index, .. } => {
+                    format!("#{}", display_frame_number(frame_index, project.video.frame_count))
+                }
                 TileSelection::Auto => "AUTO".to_string(),
             };
             let timestamp = format!("{label}  {} ms", time_ms);
@@ -286,7 +338,7 @@ fn draw_text(image: &mut RgbaImage, x: u32, y: u32, text: &str, color: Rgba<u8>,
                             for x_scale in 0..scale {
                                 let px = x
                                     + (index as u32 * 8 * scale)
-                                    + ((7 - column) as u32 * scale)
+                                    + (column as u32 * scale)
                                     + x_scale;
                                 let py = y + (row as u32 * scale) + y_scale;
                                 if px < image.width() && py < image.height() {

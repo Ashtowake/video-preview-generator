@@ -11,7 +11,8 @@ use image::{DynamicImage, ImageFormat};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::assign_auto_tiles;
-use crate::project::{PlaybackSettings, ProjectFile, TileSelection, TimeRange};
+use crate::project::{AnalysisMode, PlaybackSettings, ProjectFile, TileSelection, TimeRange};
+use crate::seek::{clamp_frame_index, frame_index_at_time_ms, seek_time_for_frame_index};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +84,7 @@ pub fn create_project_from_probe(video_path: &str) -> Result<ProjectFile> {
         project.range.end_ms,
         project.range.sample_start_ms,
         probe.fps,
+        Some(probe.frame_count),
     );
     Ok(project)
 }
@@ -157,17 +159,25 @@ pub fn probe_video(video_path: &Path) -> Result<VideoProbe> {
 
 /// Extracts a preview frame and returns it as an inline PNG data URL.
 pub fn preview_frame(project: &ProjectFile, time_ms: u64, max_width: u32) -> Result<PreviewFrame> {
-    let image = extract_frame_image(Path::new(&project.video.path), time_ms, Some(max_width))?;
+    let safe_time_ms = clamp_seek_time_ms(project, time_ms);
+    let image = extract_frame_image(
+        Path::new(&project.video.path),
+        safe_time_ms,
+        Some(max_width),
+        project.analysis_mode == AnalysisMode::QuickPreview,
+    )?;
     let mut bytes = Vec::new();
     image
         .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
         .context("failed to encode preview frame as PNG")?;
-    let frame_index =
-        ((time_ms as f64 / 1000.0) * project.video.fps.unwrap_or(24.0)).round() as u64;
+    let frame_index = clamp_frame_index(
+        frame_index_at_time_ms(safe_time_ms, project.video.fps.unwrap_or(24.0)),
+        project.video.frame_count,
+    );
 
     Ok(PreviewFrame {
         data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
-        time_ms,
+        time_ms: safe_time_ms,
         frame_index,
     })
 }
@@ -205,8 +215,12 @@ pub fn find_sharpest_neighbours(
                 continue;
             }
 
-            let candidate_time = ((candidate_frame as f64 / fps) * 1000.0).round().max(0.0) as u64;
-            let image = extract_frame_image(path, candidate_time, Some(320))?;
+            let candidate_time = seek_time_for_frame_index(
+                clamp_frame_index(candidate_frame as u64, project.video.frame_count) as i64,
+                fps,
+                project.video.duration_ms.unwrap_or(60_000),
+            );
+            let image = extract_frame_image(path, candidate_time, Some(320), false)?;
             let score = laplacian_variance(&image);
             let better_score = score > best_candidate.2;
             // Tie-break toward the nearest frame so repeated runs do not drift unnecessarily.
@@ -233,13 +247,30 @@ pub fn effective_tile_time_ms(
     selection: &TileSelection,
     fine_tune_offset_ms: i64,
 ) -> u64 {
-    let duration_ms = project.video.duration_ms.unwrap_or(60_000) as i64;
+    let latest_seek_ms = latest_seek_time_ms(project) as i64;
     let base_time = match selection {
         TileSelection::Auto => 0,
-        TileSelection::ManualFrame { time_ms, .. } => *time_ms as i64,
+        TileSelection::ManualFrame {
+            frame_index,
+            time_ms,
+        } => {
+            if let Some(fps) = project.video.fps {
+                if fps > 0.0 {
+                    seek_time_for_frame_index(
+                        *frame_index as i64,
+                        fps,
+                        project.video.duration_ms.unwrap_or(60_000),
+                    ) as i64
+                } else {
+                    *time_ms as i64
+                }
+            } else {
+                *time_ms as i64
+            }
+        }
     };
 
-    (base_time + fine_tune_offset_ms).clamp(0, duration_ms) as u64
+    (base_time + fine_tune_offset_ms).clamp(0, latest_seek_ms) as u64
 }
 
 /// Extracts a single frame with `ffmpeg`.
@@ -250,16 +281,41 @@ pub fn extract_frame_image(
     video_path: &Path,
     time_ms: u64,
     max_width: Option<u32>,
+    fast_seek: bool,
+) -> Result<DynamicImage> {
+    match run_extract_frame_command(video_path, time_ms, max_width, fast_seek) {
+        Ok(image) => Ok(image),
+        Err(initial_error) if fast_seek => {
+            run_extract_frame_command(video_path, time_ms, max_width, false).with_context(|| {
+                format!(
+                    "fast preview seek failed at {}s for {}: {initial_error}",
+                    format_seconds(time_ms),
+                    video_path.display(),
+                )
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn run_extract_frame_command(
+    video_path: &Path,
+    time_ms: u64,
+    max_width: Option<u32>,
+    fast_seek: bool,
 ) -> Result<DynamicImage> {
     let mut command = Command::new(ffmpeg_binary());
-    command
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-nostdin")
-        .arg("-i")
-        .arg(video_path)
-        .arg("-ss")
-        .arg(format_seconds(time_ms));
+    command.arg("-loglevel").arg("error").arg("-nostdin");
+
+    if fast_seek {
+        command.arg("-ss").arg(format_seconds(time_ms));
+    }
+
+    command.arg("-i").arg(video_path);
+
+    if !fast_seek {
+        command.arg("-ss").arg(format_seconds(time_ms));
+    }
 
     if let Some(max_width) = max_width {
         command
@@ -280,12 +336,28 @@ pub fn extract_frame_image(
 
     if !output.status.success() {
         return Err(anyhow!(
-            "ffmpeg failed to extract frame: {}",
+            "ffmpeg failed to extract frame at {}s from {}: {}",
+            format_seconds(time_ms),
+            video_path.display(),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
 
-    image::load_from_memory(&output.stdout).context("failed to decode extracted frame image")
+    if output.stdout.is_empty() {
+        return Err(anyhow!(
+            "ffmpeg returned no frame bytes at {}s from {}",
+            format_seconds(time_ms),
+            video_path.display()
+        ));
+    }
+
+    image::load_from_memory(&output.stdout).with_context(|| {
+        format!(
+            "failed to decode extracted frame image at {}s from {}",
+            format_seconds(time_ms),
+            video_path.display()
+        )
+    })
 }
 
 /// Computes a cheap sharpness metric using variance of the Laplacian.
@@ -344,6 +416,33 @@ fn ffprobe_binary() -> &'static str {
 
 fn ffmpeg_binary() -> &'static str {
     "ffmpeg"
+}
+
+fn clamp_seek_time_ms(project: &ProjectFile, time_ms: u64) -> u64 {
+    time_ms.min(latest_seek_time_ms(project))
+}
+
+fn latest_seek_time_ms(project: &ProjectFile) -> u64 {
+    let duration_ms = project.video.duration_ms.unwrap_or_default();
+    if duration_ms == 0 {
+        return 0;
+    }
+
+    if let (Some(frame_count), Some(fps)) = (project.video.frame_count, project.video.fps) {
+        if frame_count > 0 && fps > 0.0 {
+            let last_frame_start_ms = (((frame_count - 1) as f64 / fps) * 1000.0).floor() as u64;
+            return last_frame_start_ms.min(duration_ms.saturating_sub(1));
+        }
+    }
+
+    if let Some(fps) = project.video.fps {
+        if fps > 0.0 {
+            let frame_ms = (1000.0 / fps).ceil().max(1.0) as u64;
+            return duration_ms.saturating_sub(frame_ms);
+        }
+    }
+
+    duration_ms.saturating_sub(1)
 }
 
 #[cfg(test)]

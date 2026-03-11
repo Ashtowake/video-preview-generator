@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::media::{create_project_from_probe, find_sharpest_neighbours, preview_frame};
 use crate::project::ProjectFile;
-use crate::render::{export_sheet, ExportResult};
+use crate::render::{export_sheet, render_preview, ExportResult, SheetPreview};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -103,5 +103,14 @@ impl MediaService {
         output_override: Option<&str>,
     ) -> Result<ExportResult> {
         export_sheet(project, output_override)
+    }
+
+    /// Renders an editor-sized preview of the current contact sheet.
+    pub fn render_preview(
+        &self,
+        project: &ProjectFile,
+        max_width: Option<u32>,
+    ) -> Result<SheetPreview> {
+        render_preview(project, max_width)
     }
 }
