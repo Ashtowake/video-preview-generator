@@ -10,6 +10,7 @@ class QSlider;
 class QDoubleSpinBox;
 class QSpinBox;
 class QTextEdit;
+class QPixmap;
 
 class MpvWidget;
 
@@ -29,6 +30,8 @@ private:
   void openVideo();
   void updateMetadata(const ProjectInfo& info);
   void updateTransport(qint64 positionMs, qint64 durationMs);
+  void refreshSheetPreview();
+  void showSheetPreview(const QString& imagePath);
   void applyDarkPalette();
   void createUi();
   void createMenuBar();
@@ -44,10 +47,12 @@ private:
   QLabel* timeLabel_ = nullptr;
   QLabel* frameLabel_ = nullptr;
   QLabel* backendLabel_ = nullptr;
+  QLabel* sheetPreviewLabel_ = nullptr;
   QSlider* playheadSlider_ = nullptr;
   QDoubleSpinBox* customJumpSecondsSpin_ = nullptr;
   QSpinBox* frameStepSpin_ = nullptr;
   QTextEdit* statusText_ = nullptr;
   ProjectInfo projectInfo_;
+  QString sheetPreviewPath_;
   bool scrubbing_ = false;
 };

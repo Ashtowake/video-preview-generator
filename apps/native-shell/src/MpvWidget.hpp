@@ -3,6 +3,7 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLWidget>
 #include <QTimer>
+#include <QShowEvent>
 
 struct mpv_handle;
 struct mpv_render_context;
@@ -42,12 +43,15 @@ signals:
 protected:
   void initializeGL() override;
   void paintGL() override;
+  void showEvent(QShowEvent* event) override;
 
 private:
   static void onMpvUpdate(void* context);
   static void* getProcAddress(void* context, const char* name);
 
-  void initializePlayer();
+  bool ensureInitialized();
+  void initializePlayerCore();
+  void initializeRenderContext();
   void destroyPlayer();
   void queueRender();
   void pollState();
@@ -62,6 +66,7 @@ private:
   mpv_render_context* renderContext_ = nullptr;
   QTimer statePollTimer_;
   QString pendingPath_;
+  bool coreReady_ = false;
   bool hasMedia_ = false;
   bool paused_ = true;
   qint64 positionMs_ = 0;

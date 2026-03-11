@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSlider>
 #include <QSplitter>
@@ -79,6 +80,7 @@ void MainWindow::openVideo()
   } else {
     updateMetadata(info);
     appendStatusMessage(QStringLiteral("Loaded %1 via Rust CLI metadata bridge.").arg(info.displayName));
+    refreshSheetPreview();
   }
 
   mpvWidget_->loadFile(path);
@@ -274,18 +276,17 @@ void MainWindow::createUi()
   auto* sheetLayout = new QVBoxLayout(sheetBox);
   sheetLayout->addWidget(makeSectionHeader(
     "RUST RENDERER",
-    "Sheet composition migrates next",
-    "The next migration step is to replace the old webview canvas with a native sheet workspace that consumes the same Rust renderer and project model."));
+    "Rust-rendered starter sheet",
+    "The right pane now shows a real starter-sheet preview rendered by the Rust backend for the currently loaded video."));
 
-  auto* sheetPlaceholder = new QLabel(
-    "This pane is reserved for the native grid canvas.\n\n"
-    "Transport moved first because playback fidelity and responsiveness were the hard blockers.\n"
-    "The Rust compositor and project editing logic stay in place and will be reattached here.");
-  sheetPlaceholder->setWordWrap(true);
-  sheetPlaceholder->setAlignment(Qt::AlignCenter);
-  sheetPlaceholder->setMinimumHeight(280);
-  sheetPlaceholder->setStyleSheet("background: #0d1319; border: 1px solid #273647; border-radius: 10px; color: #aab8c4; padding: 24px;");
-  sheetLayout->addWidget(sheetPlaceholder, 1);
+  sheetPreviewLabel_ = new QLabel(
+    "Load a video to render the starter sheet preview.\n\n"
+    "This is the first bridge between the native shell and the Rust renderer.");
+  sheetPreviewLabel_->setWordWrap(true);
+  sheetPreviewLabel_->setAlignment(Qt::AlignCenter);
+  sheetPreviewLabel_->setMinimumHeight(280);
+  sheetPreviewLabel_->setStyleSheet("background: #0d1319; border: 1px solid #273647; border-radius: 10px; color: #aab8c4; padding: 24px;");
+  sheetLayout->addWidget(sheetPreviewLabel_, 1);
   workspaceLayout->addWidget(sheetBox, 1);
 
   auto* inspectorBox = new QGroupBox("Inspector / Migration Status", workspacePane);
@@ -388,6 +389,43 @@ void MainWindow::createMenuBar()
 void MainWindow::appendStatusMessage(const QString& message)
 {
   statusText_->append(message);
+}
+
+void MainWindow::refreshSheetPreview()
+{
+  if (!projectInfo_.valid || projectInfo_.videoPath.isEmpty() || !sheetPreviewLabel_) {
+    return;
+  }
+
+  sheetPreviewLabel_->setPixmap(QPixmap());
+  sheetPreviewLabel_->setText("Rendering starter sheet preview...");
+
+  QString errorMessage;
+  const QString previewPath = rustBridge_.renderStarterPreview(projectInfo_.videoPath, &errorMessage, 1100);
+  if (previewPath.isEmpty()) {
+    sheetPreviewLabel_->setText(errorMessage.isEmpty()
+      ? "Failed to render starter sheet preview."
+      : errorMessage);
+    appendStatusMessage(sheetPreviewLabel_->text());
+    return;
+  }
+
+  showSheetPreview(previewPath);
+  appendStatusMessage(QStringLiteral("Rendered starter sheet preview to %1").arg(previewPath));
+}
+
+void MainWindow::showSheetPreview(const QString& imagePath)
+{
+  sheetPreviewPath_ = imagePath;
+  QPixmap pixmap(imagePath);
+  if (pixmap.isNull()) {
+    sheetPreviewLabel_->setText(QStringLiteral("Failed to load rendered preview image %1").arg(imagePath));
+    return;
+  }
+
+  sheetPreviewLabel_->setText(QString());
+  sheetPreviewLabel_->setPixmap(
+    pixmap.scaled(900, 620, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 QString MainWindow::formatTime(qint64 timeMs) const

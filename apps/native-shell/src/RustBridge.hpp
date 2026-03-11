@@ -17,9 +17,13 @@ public:
   explicit RustBridge(QObject* parent = nullptr);
 
   [[nodiscard]] ProjectInfo inspectVideo(const QString& videoPath, QString* errorMessage = nullptr) const;
+  [[nodiscard]] QString renderStarterPreview(
+    const QString& videoPath,
+    QString* errorMessage = nullptr,
+    int maxWidth = 1200) const;
   [[nodiscard]] QString cliPath() const;
 
 private:
   [[nodiscard]] QString repoRoot() const;
-  [[nodiscard]] QStringList cliInvocation(const QString& command, const QString& argument) const;
+  [[nodiscard]] QStringList cliInvocation(const QString& command, const QStringList& arguments) const;
 };

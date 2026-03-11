@@ -1,8 +1,12 @@
+#include <clocale>
+
 #include "MpvWidget.hpp"
 
 #include <QMetaObject>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QTimer>
+#include <QDebug>
 
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
@@ -41,7 +45,7 @@ void MpvWidget::loadFile(const QString& path)
   pendingPath_ = path;
   hasMedia_ = !path.isEmpty();
 
-  if (!mpv_) {
+  if (!ensureInitialized()) {
     update();
     return;
   }
@@ -61,7 +65,7 @@ void MpvWidget::loadFile(const QString& path)
 
 void MpvWidget::play()
 {
-  if (!mpv_) {
+  if (!ensureInitialized()) {
     return;
   }
 
@@ -74,7 +78,7 @@ void MpvWidget::play()
 
 void MpvWidget::pause()
 {
-  if (!mpv_) {
+  if (!coreReady_) {
     return;
   }
 
@@ -102,7 +106,7 @@ void MpvWidget::stopPlayback()
 
 void MpvWidget::seekAbsoluteMs(qint64 positionMs)
 {
-  if (!mpv_) {
+  if (!coreReady_) {
     return;
   }
 
@@ -120,7 +124,7 @@ void MpvWidget::seekRelativeMs(qint64 deltaMs)
 
 void MpvWidget::stepFrames(int direction, int count)
 {
-  if (!mpv_ || count <= 0) {
+  if (!coreReady_ || count <= 0) {
     return;
   }
 
@@ -157,7 +161,19 @@ qint64 MpvWidget::durationMs() const
 void MpvWidget::initializeGL()
 {
   initializeOpenGLFunctions();
-  initializePlayer();
+  initializePlayerCore();
+  initializeRenderContext();
+}
+
+void MpvWidget::showEvent(QShowEvent* event)
+{
+  QOpenGLWidget::showEvent(event);
+  if (isValid()) {
+    makeCurrent();
+    initializePlayerCore();
+    initializeRenderContext();
+    doneCurrent();
+  }
 }
 
 void MpvWidget::paintGL()
@@ -201,14 +217,34 @@ void* MpvWidget::getProcAddress(void* context, const char* name)
   return nullptr;
 }
 
-void MpvWidget::initializePlayer()
+bool MpvWidget::ensureInitialized()
 {
-  if (mpv_) {
+  if (coreReady_ && renderContext_) {
+    return true;
+  }
+
+  if (!isValid()) {
+    return false;
+  }
+
+  makeCurrent();
+  initializePlayerCore();
+  initializeRenderContext();
+  doneCurrent();
+  return coreReady_ && renderContext_;
+}
+
+void MpvWidget::initializePlayerCore()
+{
+  if (coreReady_) {
     return;
   }
 
+  std::setlocale(LC_NUMERIC, "C");
+
   mpv_ = mpv_create();
   if (!mpv_) {
+    qWarning() << "libmpv: mpv_create returned null";
     emit playerError("Failed to create libmpv instance.");
     return;
   }
@@ -216,6 +252,7 @@ void MpvWidget::initializePlayer()
   mpv_set_option_string(mpv_, "config", "no");
   mpv_set_option_string(mpv_, "terminal", "no");
   mpv_set_option_string(mpv_, "msg-level", "all=warn");
+  mpv_set_option_string(mpv_, "vo", "libmpv");
   mpv_set_option_string(mpv_, "osc", "no");
   mpv_set_option_string(mpv_, "input-default-bindings", "no");
   mpv_set_option_string(mpv_, "input-vo-keyboard", "no");
@@ -225,8 +262,24 @@ void MpvWidget::initializePlayer()
 
   const int initStatus = mpv_initialize(mpv_);
   if (initStatus < 0) {
+    qWarning() << "libmpv: mpv_initialize failed" << mpv_error_string(initStatus);
     emit playerError(QStringLiteral("Failed to initialize libmpv: %1").arg(mpvErrorString(initStatus)));
     destroyPlayer();
+    return;
+  }
+
+  coreReady_ = true;
+}
+
+void MpvWidget::initializeRenderContext()
+{
+  if (!coreReady_ || renderContext_) {
+    return;
+  }
+
+  if (!QOpenGLContext::currentContext()) {
+    qWarning() << "libmpv: no current OpenGL context for render initialization";
+    emit playerError("Qt did not provide a current OpenGL context for libmpv rendering.");
     return;
   }
 
@@ -243,8 +296,8 @@ void MpvWidget::initializePlayer()
 
   const int renderStatus = mpv_render_context_create(&renderContext_, mpv_, renderParameters);
   if (renderStatus < 0) {
+    qWarning() << "libmpv: mpv_render_context_create failed" << mpv_error_string(renderStatus);
     emit playerError(QStringLiteral("Failed to create libmpv render context: %1").arg(mpvErrorString(renderStatus)));
-    destroyPlayer();
     return;
   }
 
@@ -268,6 +321,8 @@ void MpvWidget::destroyPlayer()
     mpv_terminate_destroy(mpv_);
     mpv_ = nullptr;
   }
+
+  coreReady_ = false;
 }
 
 void MpvWidget::queueRender()

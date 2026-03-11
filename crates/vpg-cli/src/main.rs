@@ -1,6 +1,8 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
 use clap::{Parser, Subcommand};
 use vpg_core::{validate_project, DiagnosticsBundle, MediaService, ProjectFile, ValidationLevel};
 
@@ -17,6 +19,13 @@ enum Commands {
     Inspect {
         video: PathBuf,
     },
+    Preview {
+        video: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 1200)]
+        max_width: u32,
+    },
     Export {
         project: PathBuf,
         #[arg(long)]
@@ -32,6 +41,11 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Inspect { video } => inspect(video),
+        Commands::Preview {
+            video,
+            out,
+            max_width,
+        } => preview(video, out, max_width),
         Commands::Export { project, out } => export(project, out),
         Commands::Batch { project } => batch(project),
     }
@@ -49,6 +63,34 @@ fn inspect(video: PathBuf) -> Result<()> {
             "video": project.video,
             "estimate": estimate,
             "diagnostics": diagnostics
+        }))?
+    );
+
+    Ok(())
+}
+
+fn preview(video: PathBuf, out: PathBuf, max_width: u32) -> Result<()> {
+    let service = MediaService;
+    let project = service.load_video_project(&video.display().to_string())?;
+    let preview = service.render_preview(&project, Some(max_width))?;
+    let encoded = preview
+        .data_url
+        .strip_prefix("data:image/png;base64,")
+        .context("render preview did not return a PNG data URL")?;
+    let bytes = BASE64_STANDARD
+        .decode(encoded)
+        .context("failed to decode preview PNG bytes")?;
+
+    fs::write(&out, bytes)
+        .with_context(|| format!("failed to write preview to {}", out.display()))?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "video": video,
+            "output": out,
+            "width": preview.width,
+            "height": preview.height
         }))?
     );
 
