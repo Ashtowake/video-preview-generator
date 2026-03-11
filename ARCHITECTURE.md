@@ -3,8 +3,8 @@
 ## Goals
 
 - Keep decode, validation, and export logic in Rust.
-- Keep React components presentational and move editor logic into small state modules and pure helpers.
-- Share a single project model vocabulary across the CLI, desktop app, and documentation.
+- Use a native desktop shell for playback-critical workflows instead of a webview transport path.
+- Share a single project model vocabulary across the CLI, native shell, and documentation.
 
 ## Layers
 
@@ -18,7 +18,7 @@ Owns:
 - validation
 - diagnostics manifest generation
 - FFmpeg/ffprobe-backed probing, frame extraction, sharpness search, and contact-sheet export
-- command-facing service interfaces shared by the CLI and Tauri desktop shell
+- command-facing service interfaces shared by the CLI and native shell bridge
 
 ### `crates/vpg-cli`
 
@@ -32,25 +32,23 @@ All commands delegate into `vpg-core`.
 
 ### `packages/domain`
 
-Contains pure TypeScript equivalents for:
+Contains the TypeScript project model and editor math that still support the deprecated Tauri shell during migration. It remains useful as a reference while the native shell grows a direct Rust/native bridge.
 
-- project and editor types used by the frontend
-- range and transport math
-- grid helpers
-- lightweight validation for optimistic UI flows
-
-### `apps/desktop`
+### `apps/native-shell`
 
 Contains:
 
-- Tauri shell
-- React app shell and routing
-- Zustand editor store
-- visual editor panes and diagnostics/help surfaces
-- bounded preview-frame caching in the Tauri layer so repeated scrubs can reuse decoded frames
+- Qt 6 desktop shell
+- `libmpv`-backed transport surface
+- native split-pane editor frame
+- a temporary Rust CLI bridge for probe metadata while the direct native bridge is built
+
+### `apps/desktop`
+
+Contains the deprecated Tauri shell. It remains in the repository only as a transition reference while the native shell takes over.
 
 ## Near-term Gaps
 
-- Desktop playback is now backed by Rust-decoded still previews, but continuous playback is still not a Rust-managed stream surface.
+- The native shell currently migrates transport first. Sheet composition and inspector editing still need to move out of the legacy Tauri frontend.
+- The Qt shell currently bridges into Rust through `vpg-cli`; a direct Rust/native bridge is the next structural cleanup.
 - Caching, chunked analysis jobs, and packaged FFmpeg sidecars still need production hardening.
-- Updater, diagnostics export polish, and release packaging remain pending platform-specific work.

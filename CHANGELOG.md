@@ -13,3 +13,6 @@
 - Added real inspector controls for grid sizing, spacing, frame styling, export format/scale, and watermark text.
 - Added a separate start-position control for auto-filled frame sampling and persisted it in the shared project format.
 - Fixed the Rust/TypeScript project schema contract for per-tile manual frame selections.
+- Added a native Qt 6 + `libmpv` desktop shell scaffold under `apps/native-shell`.
+- Switched the migration strategy away from Tauri for playback-critical workflows.
+- Added helper scripts and docs for configuring and running the native shell.
