@@ -22,6 +22,7 @@ impl ProjectFile {
     pub fn starter(video_path: impl Into<String>) -> Self {
         let grid = GridSettings::default();
         let total_tiles = (grid.rows * grid.columns) as usize;
+        let grid_columns = grid.columns;
 
         Self {
             version: 1,
@@ -42,7 +43,18 @@ impl ProjectFile {
             },
             grid,
             tiles: (0..total_tiles)
-                .map(|index| ProjectTile::auto(index as u32))
+                .map(|index| {
+                    let order = index as u32;
+                    ProjectTile {
+                        span: TileSpan {
+                            row: order / grid_columns,
+                            column: order % grid_columns,
+                            row_span: 1,
+                            column_span: 1,
+                        },
+                        ..ProjectTile::auto(order)
+                    }
+                })
                 .collect(),
             style: ProjectStyle::default(),
             watermark: WatermarkSettings::default(),
@@ -284,19 +296,24 @@ pub struct BatchSettings {
     pub inputs: Vec<String>,
 }
 
-impl Default for BatchSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            retain_manual_overrides: false,
-            inputs: Vec::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::TileSelection;
+    use super::{ProjectFile, TileSelection};
+
+    #[test]
+    fn starter_project_places_tiles_across_the_default_grid() {
+        let project = ProjectFile::starter("movie.mp4");
+
+        assert_eq!(project.grid.rows, 4);
+        assert_eq!(project.grid.columns, 5);
+        assert_eq!(project.tiles.len(), 20);
+        assert_eq!(project.tiles[0].span.row, 0);
+        assert_eq!(project.tiles[0].span.column, 0);
+        assert_eq!(project.tiles[5].span.row, 1);
+        assert_eq!(project.tiles[5].span.column, 0);
+        assert_eq!(project.tiles[19].span.row, 3);
+        assert_eq!(project.tiles[19].span.column, 4);
+    }
 
     #[test]
     fn tile_selection_serializes_with_frontend_shape() {
@@ -314,5 +331,15 @@ mod tests {
                 "timeMs": 1_750,
             })
         );
+    }
+}
+
+impl Default for BatchSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            retain_manual_overrides: false,
+            inputs: Vec::new(),
+        }
     }
 }

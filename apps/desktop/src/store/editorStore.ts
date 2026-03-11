@@ -59,7 +59,7 @@ export interface EditorState {
   setPlayheadMs: (playheadMs: number) => void;
   setRangeStart: (startMs: number) => void;
   setRangeEnd: (endMs: number) => void;
-  setSampleStart: (sampleStartMs: number) => void;
+  setSampleStartOffset: (offsetMs: number) => void;
   setCustomSkip: (value: string) => void;
   setFrameStep: (step: number) => void;
   stepCustom: (direction: -1 | 1) => void;
@@ -122,6 +122,53 @@ const normalizedStyle = (style: ProjectStyle): ProjectStyle => ({
 const clampSampleStart = (startMs: number, endMs: number, sampleStartMs: number): number =>
   Math.min(Math.max(sampleStartMs, startMs), endMs);
 
+const sampleStartOffsetMs = (project: ProjectFile): number =>
+  Math.max(0, project.range.sampleStartMs - project.range.startMs);
+
+const resetTileSelections = (tiles: ProjectFile["tiles"]): ProjectFile["tiles"] =>
+  tiles.map((tile) => ({
+    ...tile,
+    selection: { kind: "auto" as const },
+    pinned: false,
+    fineTuneOffsetMs: 0,
+  }));
+
+const inheritImportedProject = (current: ProjectFile, imported: ProjectFile): ProjectFile => {
+  const grid = normalizedGrid({ ...imported.grid, ...current.grid });
+  const range = {
+    ...imported.range,
+    startMs: 0,
+    sampleStartMs: 0,
+  };
+  const layoutTiles =
+    current.tiles.length > 0
+      ? resetTileSelections(current.tiles)
+      : resetTileSelections(reshapeTilesForGrid(imported.tiles, grid.rows, grid.columns));
+
+  return {
+    ...imported,
+    analysisMode: current.analysisMode,
+    playback: {
+      ...imported.playback,
+      customSkipMs: current.playback.customSkipMs,
+      frameStep: current.playback.frameStep,
+    },
+    range,
+    grid,
+    tiles: autoFillTiles(
+      layoutTiles,
+      range.startMs,
+      range.endMs,
+      range.sampleStartMs,
+      imported.video.fps,
+    ),
+    style: current.style,
+    watermark: current.watermark,
+    export: current.export,
+    batch: current.batch,
+  };
+};
+
 /**
  * Zustand hook for all editor state.
  *
@@ -161,7 +208,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loadVideoFromPath: async (path) => {
     set({ busy: true, alert: null, previewFrame: null, previewBusy: false, previewError: null });
     try {
-      const project = await probeVideo(path);
+      const project = inheritImportedProject(get().project, await probeVideo(path));
       set({
         busy: false,
         loadedVideoUrl: projectFileUrl(path),
@@ -183,6 +230,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
   setDurationMs: (durationMs) => {
+    const previousOffsetMs = sampleStartOffsetMs(get().project);
     const nextProject = {
       ...get().project,
       video: {
@@ -196,7 +244,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sampleStartMs: clampSampleStart(
           get().project.range.startMs,
           durationMs,
-          get().project.range.sampleStartMs,
+          get().project.range.startMs + previousOffsetMs,
         ),
       },
     };
@@ -218,15 +266,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   setRangeStart: (startMs) => {
     const { project } = get();
+    const previousOffsetMs = sampleStartOffsetMs(project);
+    const nextStartMs = Math.min(startMs, project.range.endMs - 250);
     const nextProject = {
       ...project,
       range: {
-        startMs: Math.min(startMs, project.range.endMs - 250),
+        startMs: nextStartMs,
         endMs: project.range.endMs,
         sampleStartMs: clampSampleStart(
-          Math.min(startMs, project.range.endMs - 250),
+          nextStartMs,
           project.range.endMs,
-          project.range.sampleStartMs,
+          nextStartMs + previousOffsetMs,
         ),
       },
     };
@@ -236,6 +286,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { project } = get();
     const durationMs = project.video.durationMs ?? 60_000;
     const nextEndMs = Math.max(Math.min(endMs, durationMs), project.range.startMs + 250);
+    const previousOffsetMs = sampleStartOffsetMs(project);
     const nextProject = {
       ...project,
       range: {
@@ -244,14 +295,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sampleStartMs: clampSampleStart(
           project.range.startMs,
           nextEndMs,
-          project.range.sampleStartMs,
+          project.range.startMs + previousOffsetMs,
         ),
       },
     };
     set(syncState(nextProject, get().selectedTileId));
   },
-  setSampleStart: (sampleStartMs) => {
+  setSampleStartOffset: (offsetMs) => {
     const { project } = get();
+    const rangeSpanMs = Math.max(0, project.range.endMs - project.range.startMs);
     const nextProject = {
       ...project,
       range: {
@@ -259,7 +311,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sampleStartMs: clampSampleStart(
           project.range.startMs,
           project.range.endMs,
-          sampleStartMs,
+          project.range.startMs + Math.min(Math.max(offsetMs, 0), rangeSpanMs),
         ),
       },
     };

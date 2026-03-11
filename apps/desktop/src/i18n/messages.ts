@@ -63,6 +63,7 @@ interface Catalog {
     rangeStart: string;
     rangeEnd: string;
     startPosition: string;
+    startPositionHint: string;
     rangeLabel: string;
     frameLabel: string;
     customJump: string;
@@ -70,6 +71,9 @@ interface Catalog {
     importMode: string;
     estimatedMemory: string;
     autoFill: string;
+    play: string;
+    pause: string;
+    stop: string;
     stepCustomBack: string;
     stepCustomForward: string;
     stepFiveBack: string;
@@ -166,13 +170,14 @@ const en: Catalog = {
     emptyState: "Load a local video to preview transport and range controls.",
     emptyHint:
       "The browser shell uses an object URL now. The Tauri build can later swap to backend-driven decode.",
-    backendPreviewHint: "The desktop app decodes the visible preview through the Rust backend.",
+    backendPreviewHint: "Exact frame extraction is refreshed when playback pauses, scrubbing ends, or a step control is used.",
     loadingPreview: "Refreshing preview frame...",
     previewAlt: "Current decoded preview frame",
     playhead: "Playhead",
     rangeStart: "Range start",
     rangeEnd: "Range end",
-    startPosition: "Start position",
+    startPosition: "Sampling start",
+    startPositionHint: "Frames are distributed from this offset inside the selected range to the range end.",
     rangeLabel: "Range",
     frameLabel: "Frame",
     customJump: "Custom jump",
@@ -180,6 +185,9 @@ const en: Catalog = {
     importMode: "Import mode",
     estimatedMemory: "Estimated memory",
     autoFill: "Auto-fill grid",
+    play: "Play",
+    pause: "Pause",
+    stop: "Stop",
     stepCustomBack: "- custom",
     stepCustomForward: "+ custom",
     stepFiveBack: "- 5s",
@@ -359,13 +367,14 @@ const de: Catalog = {
     emptyState: "Lokales Video laden, um Vorschau- und Bereichssteuerung zu testen.",
     emptyHint:
       "Die Browser-Shell nutzt aktuell eine Objekt-URL. Im Tauri-Build kann das später durch Backend-Decoding ersetzt werden.",
-    backendPreviewHint: "Die Desktop-App dekodiert die sichtbare Vorschau über das Rust-Backend.",
+    backendPreviewHint: "Exakte Frame-Dekodierung wird aktualisiert, wenn die Wiedergabe pausiert, das Scrubbing endet oder Schrittsteuerungen genutzt werden.",
     loadingPreview: "Vorschaubild wird aktualisiert...",
     previewAlt: "Aktuell dekodiertes Vorschaubild",
     playhead: "Abspielposition",
     rangeStart: "Bereichsbeginn",
     rangeEnd: "Bereichsende",
-    startPosition: "Startposition",
+    startPosition: "Abtaststart",
+    startPositionHint: "Frames werden von diesem Offset innerhalb des gewählten Bereichs bis zum Bereichsende verteilt.",
     rangeLabel: "Bereich",
     frameLabel: "Frame",
     customJump: "Benutzerdefinierter Sprung",
@@ -373,6 +382,9 @@ const de: Catalog = {
     importMode: "Importmodus",
     estimatedMemory: "Geschätzter Speicher",
     autoFill: "Raster automatisch füllen",
+    play: "Abspielen",
+    pause: "Pause",
+    stop: "Stoppen",
     stepCustomBack: "- benutzerdefiniert",
     stepCustomForward: "+ benutzerdefiniert",
     stepFiveBack: "- 5s",

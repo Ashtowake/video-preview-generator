@@ -133,6 +133,7 @@ mod tests {
         };
         project.tiles[0].span.row_span = 2;
         project.tiles[1].span.row = 1;
+        project.tiles[1].span.column = 0;
 
         let issues = validate_grid_spans(
             &project.tiles[0..2],
