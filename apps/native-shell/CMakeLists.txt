@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Concurrent Core Gui Widgets OpenGL OpenGLWidgets)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 
@@ -34,6 +34,8 @@ qt_add_executable(video-preview-native
   src/ProjectInfo.hpp
   src/RustBridge.cpp
   src/RustBridge.hpp
+  src/TimelineWidget.cpp
+  src/TimelineWidget.hpp
 )
 
 add_dependencies(video-preview-native vpg-cli-build)
@@ -43,6 +45,7 @@ target_compile_definitions(video-preview-native PRIVATE
 )
 
 target_link_libraries(video-preview-native PRIVATE
+  Qt6::Concurrent
   Qt6::Core
   Qt6::Gui
   Qt6::OpenGL

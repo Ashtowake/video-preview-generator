@@ -2,10 +2,10 @@
 
 #include <QAction>
 #include <QApplication>
-#include <cmath>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QFutureWatcher>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,16 +13,18 @@
 #include <QMenuBar>
 #include <QPixmap>
 #include <QPushButton>
-#include <QSlider>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTextEdit>
 #include <QVBoxLayout>
 #include <QSpinBox>
+#include <QtConcurrent>
+#include <cmath>
 #include <functional>
 
 #include "MpvWidget.hpp"
+#include "TimelineWidget.hpp"
 
 namespace {
 
@@ -49,6 +51,15 @@ QWidget* makeSectionHeader(const QString& eyebrow, const QString& title, const Q
   return widget;
 }
 
+struct BackgroundLoadResult {
+  int requestId = 0;
+  QString videoPath;
+  ProjectInfo info;
+  QString inspectError;
+  QString previewPath;
+  QString previewError;
+};
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent)
@@ -73,17 +84,63 @@ void MainWindow::openVideo()
     return;
   }
 
-  QString errorMessage;
-  const ProjectInfo info = rustBridge_.inspectVideo(path, &errorMessage);
-  if (!info.valid) {
-    appendStatusMessage(errorMessage.isEmpty() ? "Rust inspect bridge failed." : errorMessage);
-  } else {
-    updateMetadata(info);
-    appendStatusMessage(QStringLiteral("Loaded %1 via Rust CLI metadata bridge.").arg(info.displayName));
-    refreshSheetPreview();
-  }
-
+  loadRequestId_ += 1;
+  const QFileInfo fileInfo(path);
+  projectInfo_ = {};
+  projectInfo_.videoPath = path;
+  projectInfo_.displayName = fileInfo.fileName();
+  projectInfo_.valid = true;
+  titleLabel_->setText(projectInfo_.displayName);
+  infoLabel_->setText("Loading metadata in the background...");
+  updateTransport(0, 0);
+  sheetPreviewLabel_->setPixmap(QPixmap());
+  sheetPreviewLabel_->setText("Rendering starter sheet preview in the background...");
+  appendStatusMessage(QStringLiteral("Loading %1...").arg(projectInfo_.displayName));
   mpvWidget_->loadFile(path);
+  beginBackgroundLoad(path);
+}
+
+void MainWindow::beginBackgroundLoad(const QString& path)
+{
+  const int requestId = loadRequestId_;
+  auto* watcher = new QFutureWatcher<BackgroundLoadResult>(this);
+
+  connect(watcher, &QFutureWatcher<BackgroundLoadResult>::finished, this, [this, watcher] {
+    const BackgroundLoadResult result = watcher->result();
+    watcher->deleteLater();
+
+    if (result.requestId != loadRequestId_) {
+      return;
+    }
+
+    if (result.info.valid) {
+      updateMetadata(result.info);
+      appendStatusMessage(QStringLiteral("Loaded %1 via Rust CLI metadata bridge.").arg(result.info.displayName));
+    } else if (!result.inspectError.isEmpty()) {
+      infoLabel_->setText("Metadata probe failed.");
+      appendStatusMessage(result.inspectError);
+    }
+
+    if (!result.previewPath.isEmpty()) {
+      showSheetPreview(result.previewPath);
+      appendStatusMessage(QStringLiteral("Rendered starter sheet preview to %1").arg(result.previewPath));
+    } else if (!result.previewError.isEmpty()) {
+      sheetPreviewLabel_->setPixmap(QPixmap());
+      sheetPreviewLabel_->setText(result.previewError);
+      appendStatusMessage(result.previewError);
+    }
+  });
+
+  watcher->setFuture(QtConcurrent::run([path, requestId]() {
+    BackgroundLoadResult result;
+    result.requestId = requestId;
+    result.videoPath = path;
+
+    RustBridge bridge;
+    result.info = bridge.inspectVideo(path, &result.inspectError);
+    result.previewPath = bridge.renderStarterPreview(path, &result.previewError, 1100);
+    return result;
+  }));
 }
 
 void MainWindow::updateMetadata(const ProjectInfo& info)
@@ -99,18 +156,15 @@ void MainWindow::updateMetadata(const ProjectInfo& info)
   backendLabel_->setText(QStringLiteral("Rust core bridge: %1")
     .arg(rustBridge_.cliPath().isEmpty() ? "unavailable" : rustBridge_.cliPath()));
 
-  playheadSlider_->setMaximum(static_cast<int>(qMax<qint64>(0, info.durationMs)));
+  timelineWidget_->setFramesPerSecond(info.fps);
+  timelineWidget_->setDurationMs(info.durationMs);
   updateTransport(0, info.durationMs);
 }
 
 void MainWindow::updateTransport(qint64 positionMs, qint64 durationMs)
 {
-  if (!scrubbing_) {
-    playheadSlider_->blockSignals(true);
-    playheadSlider_->setMaximum(static_cast<int>(qMax<qint64>(0, durationMs)));
-    playheadSlider_->setValue(static_cast<int>(qBound<qint64>(0, positionMs, durationMs)));
-    playheadSlider_->blockSignals(false);
-  }
+  timelineWidget_->setDurationMs(durationMs);
+  timelineWidget_->setPositionMs(positionMs);
 
   timeLabel_->setText(QStringLiteral("%1 / %2").arg(formatTime(positionMs), formatTime(durationMs)));
   frameLabel_->setText(QStringLiteral("Frame %1").arg(displayFrameNumber(positionMs)));
@@ -139,7 +193,7 @@ void MainWindow::applyDarkPalette()
       left: 12px;
       padding: 0 4px;
     }
-    QPushButton, QSpinBox, QDoubleSpinBox, QSlider {
+    QPushButton, QSpinBox, QDoubleSpinBox {
       min-height: 32px;
     }
     QPushButton {
@@ -220,9 +274,8 @@ void MainWindow::createUi()
   controlsRow->addStretch(1);
   transportLayout->addLayout(controlsRow);
 
-  playheadSlider_ = new QSlider(Qt::Horizontal, transportPane);
-  playheadSlider_->setRange(0, 0);
-  transportLayout->addWidget(playheadSlider_);
+  timelineWidget_ = new TimelineWidget(transportPane);
+  transportLayout->addWidget(timelineWidget_);
 
   auto* metaRow = new QHBoxLayout;
   timeLabel_ = new QLabel("0:00.000 / 0:00.000");
@@ -330,16 +383,12 @@ void MainWindow::createUi()
     mpvWidget_->stepFrames(1, frameStepSpin_->value());
   });
 
-  connect(playheadSlider_, &QSlider::sliderPressed, this, [this] {
-    scrubbing_ = true;
+  connect(timelineWidget_, &TimelineWidget::scrubPreviewRequested, this, [this](qint64 positionMs) {
+    updateTransport(positionMs, qMax<qint64>(timelineWidget_->durationMs(), mpvWidget_->durationMs()));
+    mpvWidget_->seekPreviewMs(positionMs);
   });
-  connect(playheadSlider_, &QSlider::sliderReleased, this, [this] {
-    scrubbing_ = false;
-    mpvWidget_->seekAbsoluteMs(playheadSlider_->value());
-  });
-  connect(playheadSlider_, &QSlider::sliderMoved, this, [this](int value) {
-    updateTransport(value, qMax<qint64>(playheadSlider_->maximum(), 0));
-    mpvWidget_->seekAbsoluteMs(value);
+  connect(timelineWidget_, &TimelineWidget::scrubFinished, this, [this](qint64 positionMs) {
+    mpvWidget_->seekAbsoluteMs(positionMs);
   });
 
   connect(mpvWidget_, &MpvWidget::positionChanged, this, &MainWindow::updateTransport);

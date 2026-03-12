@@ -6,13 +6,13 @@
 #include "RustBridge.hpp"
 
 class QLabel;
-class QSlider;
 class QDoubleSpinBox;
 class QSpinBox;
 class QTextEdit;
 class QPixmap;
 
 class MpvWidget;
+class TimelineWidget;
 
 /**
  * Native editor shell focused on the workflow-critical transport path first.
@@ -27,6 +27,7 @@ public:
   explicit MainWindow(QWidget* parent = nullptr);
 
 private:
+  void beginBackgroundLoad(const QString& path);
   void openVideo();
   void updateMetadata(const ProjectInfo& info);
   void updateTransport(qint64 positionMs, qint64 durationMs);
@@ -48,11 +49,11 @@ private:
   QLabel* frameLabel_ = nullptr;
   QLabel* backendLabel_ = nullptr;
   QLabel* sheetPreviewLabel_ = nullptr;
-  QSlider* playheadSlider_ = nullptr;
+  TimelineWidget* timelineWidget_ = nullptr;
   QDoubleSpinBox* customJumpSecondsSpin_ = nullptr;
   QSpinBox* frameStepSpin_ = nullptr;
   QTextEdit* statusText_ = nullptr;
   ProjectInfo projectInfo_;
   QString sheetPreviewPath_;
-  bool scrubbing_ = false;
+  int loadRequestId_ = 0;
 };

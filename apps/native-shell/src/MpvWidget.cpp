@@ -14,7 +14,7 @@
 namespace {
 
 constexpr int kRenderFlipY = 1;
-constexpr int kPollIntervalMs = 33;
+constexpr int kPollIntervalMs = 16;
 
 QString mpvErrorString(int status)
 {
@@ -110,11 +110,27 @@ void MpvWidget::seekAbsoluteMs(qint64 positionMs)
     return;
   }
 
+  pendingPreviewSeekMs_ = -1;
+  previewSeekInFlight_ = false;
   const double seconds = static_cast<double>(clampedPosition(positionMs)) / 1000.0;
   if (setDoubleProperty("time-pos", seconds)) {
     pollState();
     queueRender();
   }
+}
+
+void MpvWidget::seekPreviewMs(qint64 positionMs)
+{
+  if (!coreReady_) {
+    return;
+  }
+
+  pendingPreviewSeekMs_ = clampedPosition(positionMs);
+  if (previewSeekInFlight_) {
+    return;
+  }
+
+  dispatchPreviewSeek(pendingPreviewSeekMs_);
 }
 
 void MpvWidget::seekRelativeMs(qint64 deltaMs)
@@ -204,7 +220,7 @@ void MpvWidget::paintGL()
 void MpvWidget::onMpvUpdate(void* context)
 {
   auto* widget = static_cast<MpvWidget*>(context);
-  QMetaObject::invokeMethod(widget, &MpvWidget::queueRender, Qt::QueuedConnection);
+  QMetaObject::invokeMethod(widget, &MpvWidget::handleMpvUpdate, Qt::QueuedConnection);
 }
 
 void* MpvWidget::getProcAddress(void* context, const char* name)
@@ -234,6 +250,25 @@ bool MpvWidget::ensureInitialized()
   return coreReady_ && renderContext_;
 }
 
+void MpvWidget::dispatchPreviewSeek(qint64 positionMs)
+{
+  if (!coreReady_) {
+    return;
+  }
+
+  const qint64 clampedMs = clampedPosition(positionMs);
+  const double seconds = static_cast<double>(clampedMs) / 1000.0;
+  pendingPreviewSeekMs_ = -1;
+  previewSeekInFlight_ = true;
+  if (!setDoubleProperty("time-pos", seconds)) {
+    previewSeekInFlight_ = false;
+    return;
+  }
+
+  positionMs_ = clampedMs;
+  queueRender();
+}
+
 void MpvWidget::initializePlayerCore()
 {
   if (coreReady_) {
@@ -259,6 +294,10 @@ void MpvWidget::initializePlayerCore()
   mpv_set_option_string(mpv_, "keep-open", "yes");
   mpv_set_option_string(mpv_, "pause", "yes");
   mpv_set_option_string(mpv_, "hwdec", "auto-safe");
+  mpv_set_option_string(mpv_, "cache", "yes");
+  mpv_set_option_string(mpv_, "demuxer-seekable-cache", "yes");
+  mpv_set_option_string(mpv_, "demuxer-max-bytes", "256MiB");
+  mpv_set_option_string(mpv_, "demuxer-max-back-bytes", "128MiB");
 
   const int initStatus = mpv_initialize(mpv_);
   if (initStatus < 0) {
@@ -328,6 +367,23 @@ void MpvWidget::destroyPlayer()
 void MpvWidget::queueRender()
 {
   update();
+}
+
+void MpvWidget::handleMpvUpdate()
+{
+  previewSeekInFlight_ = false;
+  update();
+
+  if (pendingPreviewSeekMs_ < 0) {
+    return;
+  }
+
+  if (pendingPreviewSeekMs_ == positionMs_) {
+    pendingPreviewSeekMs_ = -1;
+    return;
+  }
+
+  dispatchPreviewSeek(pendingPreviewSeekMs_);
 }
 
 void MpvWidget::pollState()

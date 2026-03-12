@@ -27,6 +27,7 @@ public:
   void togglePause();
   void stopPlayback();
   void seekAbsoluteMs(qint64 positionMs);
+  void seekPreviewMs(qint64 positionMs);
   void seekRelativeMs(qint64 deltaMs);
   void stepFrames(int direction, int count);
 
@@ -49,7 +50,9 @@ private:
   static void onMpvUpdate(void* context);
   static void* getProcAddress(void* context, const char* name);
 
+  void handleMpvUpdate();
   bool ensureInitialized();
+  void dispatchPreviewSeek(qint64 positionMs);
   void initializePlayerCore();
   void initializeRenderContext();
   void destroyPlayer();
@@ -71,4 +74,6 @@ private:
   bool paused_ = true;
   qint64 positionMs_ = 0;
   qint64 durationMs_ = 0;
+  qint64 pendingPreviewSeekMs_ = -1;
+  bool previewSeekInFlight_ = false;
 };
