@@ -16,3 +16,4 @@
 - Added a native Qt 6 + `libmpv` desktop shell scaffold under `apps/native-shell`.
 - Switched the migration strategy away from Tauri for playback-critical workflows.
 - Added helper scripts and docs for configuring and running the native shell.
+- Replaced the top-level MIT presentation with `GPL-3.0-or-later` and added explicit third-party notices for `libmpv`, Qt 6, FFmpeg, and the legacy Tauri shell.

@@ -2,6 +2,8 @@
 
 `video-preview-generator` is being rebuilt as a cross-platform desktop editor for high-quality video contact sheets. The codebase now centers on a Rust core plus CLI, with the desktop shell migrating to a native Qt 6 + `libmpv` stack so transport fidelity and responsiveness are owned by one decoder path.
 
+The repository is licensed under `GPL-3.0-or-later`. The shipped desktop application also carries third-party obligations from `libmpv`, Qt 6, and FFmpeg; see [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) and [`RELEASE.md`](./RELEASE.md).
+
 The original Python/Tkinter prototype is preserved in [`legacy/python-prototype`](./legacy/python-prototype) as a reference implementation.
 
 ## Workspace Layout
@@ -98,3 +100,9 @@ pnpm docs:api:ts
 ```
 
 Run `pnpm docs:api` to build both.
+
+## License
+
+- Project source: `GPL-3.0-or-later`
+- Third-party runtime notices: [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)
+- Release/distribution compliance notes: [`RELEASE.md`](./RELEASE.md)

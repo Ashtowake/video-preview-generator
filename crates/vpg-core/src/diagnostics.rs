@@ -30,8 +30,24 @@ impl DiagnosticsBundle {
             cache_directory: cache_directory.into(),
             notices: vec![
                 NoticeItem {
+                    name: "libmpv / mpv".to_string(),
+                    license:
+                        "GPL-2.0-or-later or LGPL-2.1-or-later depending on build configuration"
+                            .to_string(),
+                    url: "https://github.com/mpv-player/mpv".to_string(),
+                },
+                NoticeItem {
+                    name: "Qt 6".to_string(),
+                    license:
+                        "LGPL-3.0-only, GPL-2.0-only, GPL-3.0-only, or commercial depending on module and distribution"
+                            .to_string(),
+                    url: "https://doc.qt.io/qt-6/licensing.html".to_string(),
+                },
+                NoticeItem {
                     name: "FFmpeg".to_string(),
-                    license: "LGPL/GPL depending on distribution".to_string(),
+                    license:
+                        "LGPL-2.1-or-later by default, or GPL when built with GPL components enabled"
+                            .to_string(),
                     url: "https://ffmpeg.org/legal.html".to_string(),
                 },
                 NoticeItem {
