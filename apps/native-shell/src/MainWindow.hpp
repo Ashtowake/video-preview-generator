@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include <QDialog>
 #include <QMainWindow>
 #include <QRectF>
 
@@ -16,6 +17,7 @@ class QTextEdit;
 class QPixmap;
 
 class CropOverlayWidget;
+class FitPreviewWidget;
 class MpvWidget;
 class TimelineWidget;
 
@@ -38,6 +40,7 @@ private:
   void applyPendingCrop();
   void clearCrop();
   void updateCropUi();
+  void toggleDevOverlay();
   void openVideo();
   void updateMetadata(const ProjectInfo& info);
   void updateTransport(qint64 positionMs, qint64 durationMs);
@@ -57,17 +60,20 @@ private:
   QLabel* infoLabel_ = nullptr;
   QLabel* timeLabel_ = nullptr;
   QLabel* frameLabel_ = nullptr;
-  QLabel* backendLabel_ = nullptr;
   QLabel* cropStatusLabel_ = nullptr;
-  QLabel* sheetPreviewLabel_ = nullptr;
+  QLabel* backendLabel_ = nullptr;
+  QLabel* shellLabel_ = nullptr;
+  QLabel* projectBridgeLabel_ = nullptr;
   TimelineWidget* timelineWidget_ = nullptr;
   CropOverlayWidget* cropOverlay_ = nullptr;
+  FitPreviewWidget* sheetPreviewWidget_ = nullptr;
   QDoubleSpinBox* customJumpSecondsSpin_ = nullptr;
   QSpinBox* frameStepSpin_ = nullptr;
   QPushButton* selectCropButton_ = nullptr;
   QPushButton* applyCropButton_ = nullptr;
   QPushButton* clearCropButton_ = nullptr;
   QTextEdit* statusText_ = nullptr;
+  QDialog* devOverlay_ = nullptr;
   ProjectInfo projectInfo_;
   QString sheetPreviewPath_;
   int loadRequestId_ = 0;

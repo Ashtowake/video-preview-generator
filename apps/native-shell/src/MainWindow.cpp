@@ -25,33 +25,11 @@
 #include <functional>
 
 #include "CropOverlayWidget.hpp"
+#include "FitPreviewWidget.hpp"
 #include "MpvWidget.hpp"
 #include "TimelineWidget.hpp"
 
 namespace {
-
-QWidget* makeSectionHeader(const QString& eyebrow, const QString& title, const QString& description)
-{
-  auto* widget = new QWidget;
-  auto* layout = new QVBoxLayout(widget);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(4);
-
-  auto* eyebrowLabel = new QLabel(eyebrow);
-  eyebrowLabel->setObjectName("EyebrowLabel");
-
-  auto* titleLabel = new QLabel(title);
-  titleLabel->setObjectName("SectionTitle");
-
-  auto* descriptionLabel = new QLabel(description);
-  descriptionLabel->setObjectName("SectionDescription");
-  descriptionLabel->setWordWrap(true);
-
-  layout->addWidget(eyebrowLabel);
-  layout->addWidget(titleLabel);
-  layout->addWidget(descriptionLabel);
-  return widget;
-}
 
 struct BackgroundLoadResult {
   int requestId = 0;
@@ -94,9 +72,9 @@ void MainWindow::openVideo()
   appliedCrop_.reset();
   titleLabel_->setText(projectInfo_.displayName);
   infoLabel_->setText("Loading metadata in the background...");
+  infoLabel_->setToolTip(path);
   updateTransport(0, 0);
-  sheetPreviewLabel_->setPixmap(QPixmap());
-  sheetPreviewLabel_->setText("Rendering starter sheet preview in the background...");
+  sheetPreviewWidget_->clearPreview("Rendering starter sheet preview in the background...");
   cropOverlay_->setSourceVideoSize(QSize());
   cropOverlay_->setAppliedCrop(std::nullopt);
   cropOverlay_->clearPendingCrop();
@@ -126,8 +104,7 @@ void MainWindow::beginBackgroundLoad(const QString& path)
     } else if (!result.inspectError.isEmpty()) {
       infoLabel_->setText("Metadata probe failed.");
       appendStatusMessage(result.inspectError);
-      sheetPreviewLabel_->setPixmap(QPixmap());
-      sheetPreviewLabel_->setText("Failed to inspect video metadata.");
+      sheetPreviewWidget_->clearPreview("Failed to inspect video metadata.");
     }
   });
 
@@ -153,8 +130,7 @@ void MainWindow::beginPreviewRender()
   const QString videoPath = projectInfo_.videoPath;
   const std::optional<QRectF> crop = appliedCrop_;
 
-  sheetPreviewLabel_->setPixmap(QPixmap());
-  sheetPreviewLabel_->setText(crop.has_value()
+  sheetPreviewWidget_->clearPreview(crop.has_value()
     ? "Rendering cropped sheet preview in the background..."
     : "Rendering starter sheet preview in the background...");
 
@@ -173,11 +149,12 @@ void MainWindow::beginPreviewRender()
       return;
     }
 
-    sheetPreviewLabel_->setPixmap(QPixmap());
-    sheetPreviewLabel_->setText(previewError.isEmpty()
+    sheetPreviewWidget_->clearPreview(previewError.isEmpty()
       ? "Failed to render sheet preview."
       : previewError);
-    appendStatusMessage(sheetPreviewLabel_->text());
+    appendStatusMessage(previewError.isEmpty()
+      ? "Failed to render sheet preview."
+      : previewError);
   });
 
   watcher->setFuture(QtConcurrent::run([videoPath, crop]() {
@@ -270,6 +247,7 @@ void MainWindow::updateMetadata(const ProjectInfo& info)
     .arg(info.height)
     .arg(info.fps, 0, 'f', 2)
     .arg(info.frameCount));
+  infoLabel_->setToolTip(info.videoPath);
   backendLabel_->setText(QStringLiteral("Rust core bridge: %1")
     .arg(rustBridge_.cliPath().isEmpty() ? "unavailable" : rustBridge_.cliPath()));
 
@@ -297,51 +275,57 @@ void MainWindow::applyDarkPalette()
       background: #10161d;
       color: #f4f7fb;
       font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      font-size: 14px;
+      font-size: 13px;
     }
     QGroupBox {
       border: 1px solid #273647;
       border-radius: 10px;
-      margin-top: 10px;
-      padding: 14px 12px 12px 12px;
-      background: #16202a;
+      margin-top: 8px;
+      padding: 10px 10px 10px 10px;
+      background: #141d26;
       font-weight: 600;
     }
     QGroupBox::title {
       subcontrol-origin: margin;
-      left: 12px;
+      left: 10px;
       padding: 0 4px;
     }
     QPushButton, QSpinBox, QDoubleSpinBox {
-      min-height: 32px;
+      min-height: 28px;
     }
     QPushButton {
       border: 1px solid #30465c;
       border-radius: 8px;
       background: #203142;
-      padding: 6px 12px;
+      padding: 4px 10px;
     }
     QPushButton:hover {
       background: #294055;
+    }
+    QPushButton:disabled {
+      color: #738190;
+      border-color: #233241;
+      background: #18222c;
     }
     QTextEdit {
       border: 1px solid #273647;
       border-radius: 8px;
       background: #0f151c;
     }
-    QLabel#EyebrowLabel {
-      color: #f0d46b;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      font-size: 11px;
+    QScrollArea {
+      border: none;
+      background: transparent;
     }
     QLabel#SectionTitle {
       font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
     }
-    QLabel#SectionDescription {
+    QLabel#MetaLabel {
       color: #aab8c4;
+    }
+    QLabel#InspectorValue {
+      color: #d8e3ee;
     }
   )");
 }
@@ -359,23 +343,25 @@ void MainWindow::createUi()
   auto* transportPane = new QWidget(splitter);
   auto* transportLayout = new QVBoxLayout(transportPane);
   transportLayout->setContentsMargins(0, 0, 0, 0);
-  transportLayout->setSpacing(12);
-
-  transportLayout->addWidget(makeSectionHeader(
-    "NATIVE TRANSPORT",
-    "Frame-accurate playback",
-    "The transport pane is now backed directly by libmpv so playback, scrubbing, and frame stepping use one authoritative decoder state."));
+  transportLayout->setSpacing(10);
 
   auto* headerRow = new QHBoxLayout;
   titleLabel_ = new QLabel("No video loaded");
   titleLabel_->setObjectName("SectionTitle");
+  titleLabel_->setWordWrap(false);
+  titleLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   infoLabel_ = new QLabel("Open a local video to start the native shell migration.");
-  infoLabel_->setStyleSheet("color: #aab8c4;");
+  infoLabel_->setObjectName("MetaLabel");
+  infoLabel_->setWordWrap(false);
+  infoLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  infoLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   headerRow->addWidget(titleLabel_, 1);
   headerRow->addWidget(infoLabel_, 1);
   transportLayout->addLayout(headerRow);
 
   auto* playerHost = new QWidget(transportPane);
+  playerHost->setMinimumHeight(360);
+  playerHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   auto* playerStack = new QStackedLayout(playerHost);
   playerStack->setContentsMargins(0, 0, 0, 0);
   playerStack->setStackingMode(QStackedLayout::StackAll);
@@ -466,58 +452,68 @@ void MainWindow::createUi()
   auto* workspacePane = new QWidget(splitter);
   auto* workspaceLayout = new QVBoxLayout(workspacePane);
   workspaceLayout->setContentsMargins(0, 0, 0, 0);
-  workspaceLayout->setSpacing(12);
+  workspaceLayout->setSpacing(10);
 
-  auto* sheetBox = new QGroupBox("Sheet Canvas", workspacePane);
+  auto* sheetBox = new QGroupBox("Sheet Preview", workspacePane);
   auto* sheetLayout = new QVBoxLayout(sheetBox);
-  sheetLayout->addWidget(makeSectionHeader(
-    "RUST RENDERER",
-    "Rust-rendered starter sheet",
-    "The right pane now shows a real starter-sheet preview rendered by the Rust backend for the currently loaded video."));
-
-  sheetPreviewLabel_ = new QLabel(
-    "Load a video to render the starter sheet preview.\n\n"
-    "This is the first bridge between the native shell and the Rust renderer.");
-  sheetPreviewLabel_->setWordWrap(true);
-  sheetPreviewLabel_->setAlignment(Qt::AlignCenter);
-  sheetPreviewLabel_->setMinimumHeight(280);
-  sheetPreviewLabel_->setStyleSheet("background: #0d1319; border: 1px solid #273647; border-radius: 10px; color: #aab8c4; padding: 24px;");
-  sheetLayout->addWidget(sheetPreviewLabel_, 1);
+  sheetPreviewWidget_ = new FitPreviewWidget(sheetBox);
+  sheetLayout->addWidget(sheetPreviewWidget_, 1);
   workspaceLayout->addWidget(sheetBox, 1);
-
-  auto* inspectorBox = new QGroupBox("Inspector / Migration Status", workspacePane);
-  auto* inspectorLayout = new QVBoxLayout(inspectorBox);
-
-  auto* summaryForm = new QFormLayout;
-  backendLabel_ = new QLabel("Rust core bridge: unavailable");
-  summaryForm->addRow("Backend", backendLabel_);
-  auto* modeLabel = new QLabel("Qt 6 Widgets + libmpv transport");
-  summaryForm->addRow("Desktop shell", modeLabel);
-  auto* projectLabel = new QLabel("Rust CLI bridge for probe/export during migration");
-  projectLabel->setWordWrap(true);
-  summaryForm->addRow("Project bridge", projectLabel);
-  auto* cropHelpLabel = new QLabel("Use Select Crop, drag on the player, then Apply.");
-  cropHelpLabel->setWordWrap(true);
-  summaryForm->addRow("Crop workflow", cropHelpLabel);
-  inspectorLayout->addLayout(summaryForm);
-
-  statusText_ = new QTextEdit(inspectorBox);
-  statusText_->setReadOnly(true);
-  statusText_->setMinimumHeight(180);
-  statusText_->setPlainText(
-    "Migration notes:\n"
-    "- Native transport is authoritative.\n"
-    "- Rust core stays responsible for probe, validation, rendering, and export.\n"
-    "- Tauri remains in the repository only as a transition reference.\n");
-  inspectorLayout->addWidget(statusText_, 1);
-  workspaceLayout->addWidget(inspectorBox, 0);
 
   splitter->addWidget(transportPane);
   splitter->addWidget(workspacePane);
-  splitter->setSizes({ width() / 2, width() / 2 });
+  splitter->setSizes({ width() * 3 / 5, width() * 2 / 5 });
+  splitter->setStretchFactor(0, 3);
+  splitter->setStretchFactor(1, 2);
 
   outerLayout->addWidget(splitter, 1);
   setCentralWidget(central);
+
+  devOverlay_ = new QDialog(this, Qt::Tool | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+  devOverlay_->setWindowTitle("Dev Overlay");
+  devOverlay_->resize(420, 560);
+  auto* devLayout = new QVBoxLayout(devOverlay_);
+  devLayout->setContentsMargins(12, 12, 12, 12);
+  devLayout->setSpacing(10);
+
+  auto* sourceBox = new QGroupBox("Source", devOverlay_);
+  auto* sourceLayout = new QFormLayout(sourceBox);
+  sourceLayout->setContentsMargins(10, 12, 10, 10);
+  backendLabel_ = new QLabel("Rust core bridge: unavailable");
+  backendLabel_->setObjectName("InspectorValue");
+  shellLabel_ = new QLabel("Qt 6 Widgets + libmpv");
+  shellLabel_->setObjectName("InspectorValue");
+  projectBridgeLabel_ = new QLabel("Rust CLI preview/probe bridge");
+  projectBridgeLabel_->setWordWrap(true);
+  projectBridgeLabel_->setObjectName("InspectorValue");
+  sourceLayout->addRow("Backend", backendLabel_);
+  sourceLayout->addRow("Shell", shellLabel_);
+  sourceLayout->addRow("Bridge", projectBridgeLabel_);
+  devLayout->addWidget(sourceBox);
+
+  auto* previewBox = new QGroupBox("Preview", devOverlay_);
+  auto* previewLayout = new QVBoxLayout(previewBox);
+  previewLayout->setContentsMargins(10, 12, 10, 10);
+  auto* previewHelp = new QLabel(
+    "The sheet preview is rendered by the Rust backend and respects the currently applied crop.");
+  previewHelp->setWordWrap(true);
+  previewHelp->setObjectName("MetaLabel");
+  previewLayout->addWidget(previewHelp);
+  devLayout->addWidget(previewBox);
+
+  auto* logBox = new QGroupBox("Session Log", devOverlay_);
+  auto* logLayout = new QVBoxLayout(logBox);
+  logLayout->setContentsMargins(10, 12, 10, 10);
+  statusText_ = new QTextEdit(logBox);
+  statusText_->setReadOnly(true);
+  statusText_->setMinimumHeight(180);
+  statusText_->setPlainText(
+    "Session log:\n"
+    "- Native transport is authoritative.\n"
+    "- Rust core handles preview rendering and export.\n");
+  logLayout->addWidget(statusText_, 1);
+  devLayout->addWidget(logBox, 1);
+  devOverlay_->hide();
 
   connect(playButton, &QPushButton::clicked, mpvWidget_, &MpvWidget::play);
   connect(pauseButton, &QPushButton::clicked, mpvWidget_, &MpvWidget::pause);
@@ -588,6 +584,11 @@ void MainWindow::createMenuBar()
   connect(stepForwardAction, &QAction::triggered, this, [this] {
     mpvWidget_->stepFrames(1, frameStepSpin_->value());
   });
+
+  auto* viewMenu = menuBar()->addMenu("&View");
+  auto* toggleDevOverlayAction = viewMenu->addAction("Toggle &Dev Overlay");
+  toggleDevOverlayAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+  connect(toggleDevOverlayAction, &QAction::triggered, this, &MainWindow::toggleDevOverlay);
 }
 
 void MainWindow::appendStatusMessage(const QString& message)
@@ -600,18 +601,34 @@ void MainWindow::refreshSheetPreview()
   beginPreviewRender();
 }
 
+void MainWindow::toggleDevOverlay()
+{
+  if (!devOverlay_) {
+    return;
+  }
+
+  if (devOverlay_->isVisible()) {
+    devOverlay_->hide();
+    return;
+  }
+
+  const QPoint overlayOffset = QPoint(width() - devOverlay_->width() - 24, 48);
+  devOverlay_->move(mapToGlobal(overlayOffset));
+  devOverlay_->show();
+  devOverlay_->raise();
+  devOverlay_->activateWindow();
+}
+
 void MainWindow::showSheetPreview(const QString& imagePath)
 {
   sheetPreviewPath_ = imagePath;
   QPixmap pixmap(imagePath);
   if (pixmap.isNull()) {
-    sheetPreviewLabel_->setText(QStringLiteral("Failed to load rendered preview image %1").arg(imagePath));
+    sheetPreviewWidget_->clearPreview(QStringLiteral("Failed to load rendered preview image %1").arg(imagePath));
     return;
   }
 
-  sheetPreviewLabel_->setText(QString());
-  sheetPreviewLabel_->setPixmap(
-    pixmap.scaled(900, 620, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  sheetPreviewWidget_->setPreviewImage(pixmap);
 }
 
 QString MainWindow::formatTime(qint64 timeMs) const
