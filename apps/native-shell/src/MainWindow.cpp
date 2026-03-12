@@ -13,6 +13,7 @@
 #include <QMenuBar>
 #include <QPixmap>
 #include <QPushButton>
+#include <QStackedLayout>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -23,6 +24,7 @@
 #include <cmath>
 #include <functional>
 
+#include "CropOverlayWidget.hpp"
 #include "MpvWidget.hpp"
 #include "TimelineWidget.hpp"
 
@@ -56,8 +58,6 @@ struct BackgroundLoadResult {
   QString videoPath;
   ProjectInfo info;
   QString inspectError;
-  QString previewPath;
-  QString previewError;
 };
 
 } // namespace
@@ -85,16 +85,22 @@ void MainWindow::openVideo()
   }
 
   loadRequestId_ += 1;
+  previewRequestId_ = 0;
   const QFileInfo fileInfo(path);
   projectInfo_ = {};
   projectInfo_.videoPath = path;
   projectInfo_.displayName = fileInfo.fileName();
   projectInfo_.valid = true;
+  appliedCrop_.reset();
   titleLabel_->setText(projectInfo_.displayName);
   infoLabel_->setText("Loading metadata in the background...");
   updateTransport(0, 0);
   sheetPreviewLabel_->setPixmap(QPixmap());
   sheetPreviewLabel_->setText("Rendering starter sheet preview in the background...");
+  cropOverlay_->setSourceVideoSize(QSize());
+  cropOverlay_->setAppliedCrop(std::nullopt);
+  cropOverlay_->clearPendingCrop();
+  updateCropUi();
   appendStatusMessage(QStringLiteral("Loading %1...").arg(projectInfo_.displayName));
   mpvWidget_->loadFile(path);
   beginBackgroundLoad(path);
@@ -116,18 +122,12 @@ void MainWindow::beginBackgroundLoad(const QString& path)
     if (result.info.valid) {
       updateMetadata(result.info);
       appendStatusMessage(QStringLiteral("Loaded %1 via Rust CLI metadata bridge.").arg(result.info.displayName));
+      beginPreviewRender();
     } else if (!result.inspectError.isEmpty()) {
       infoLabel_->setText("Metadata probe failed.");
       appendStatusMessage(result.inspectError);
-    }
-
-    if (!result.previewPath.isEmpty()) {
-      showSheetPreview(result.previewPath);
-      appendStatusMessage(QStringLiteral("Rendered starter sheet preview to %1").arg(result.previewPath));
-    } else if (!result.previewError.isEmpty()) {
       sheetPreviewLabel_->setPixmap(QPixmap());
-      sheetPreviewLabel_->setText(result.previewError);
-      appendStatusMessage(result.previewError);
+      sheetPreviewLabel_->setText("Failed to inspect video metadata.");
     }
   });
 
@@ -138,9 +138,126 @@ void MainWindow::beginBackgroundLoad(const QString& path)
 
     RustBridge bridge;
     result.info = bridge.inspectVideo(path, &result.inspectError);
-    result.previewPath = bridge.renderStarterPreview(path, &result.previewError, 1100);
     return result;
   }));
+}
+
+void MainWindow::beginPreviewRender()
+{
+  if (!projectInfo_.valid || projectInfo_.videoPath.isEmpty()) {
+    return;
+  }
+
+  previewRequestId_ += 1;
+  const int requestId = previewRequestId_;
+  const QString videoPath = projectInfo_.videoPath;
+  const std::optional<QRectF> crop = appliedCrop_;
+
+  sheetPreviewLabel_->setPixmap(QPixmap());
+  sheetPreviewLabel_->setText(crop.has_value()
+    ? "Rendering cropped sheet preview in the background..."
+    : "Rendering starter sheet preview in the background...");
+
+  auto* watcher = new QFutureWatcher<QPair<QString, QString>>(this);
+  connect(watcher, &QFutureWatcher<QPair<QString, QString>>::finished, this, [this, watcher, requestId] {
+    const auto [previewPath, previewError] = watcher->result();
+    watcher->deleteLater();
+
+    if (requestId != previewRequestId_) {
+      return;
+    }
+
+    if (!previewPath.isEmpty()) {
+      showSheetPreview(previewPath);
+      appendStatusMessage(QStringLiteral("Rendered sheet preview to %1").arg(previewPath));
+      return;
+    }
+
+    sheetPreviewLabel_->setPixmap(QPixmap());
+    sheetPreviewLabel_->setText(previewError.isEmpty()
+      ? "Failed to render sheet preview."
+      : previewError);
+    appendStatusMessage(sheetPreviewLabel_->text());
+  });
+
+  watcher->setFuture(QtConcurrent::run([videoPath, crop]() {
+    QString errorMessage;
+    RustBridge bridge;
+    const QString previewPath = bridge.renderStarterPreview(videoPath, &errorMessage, 1100, crop);
+    return qMakePair(previewPath, errorMessage);
+  }));
+}
+
+void MainWindow::beginCropSelection()
+{
+  if (!projectInfo_.valid || projectInfo_.width <= 0 || projectInfo_.height <= 0) {
+    appendStatusMessage("Crop selection is not available until video metadata is loaded.");
+    return;
+  }
+
+  cropOverlay_->beginSelection();
+  statusBar()->showMessage("Drag over the player to choose a crop area.", 4000);
+  appendStatusMessage("Crop selection started.");
+}
+
+void MainWindow::applyPendingCrop()
+{
+  const std::optional<QRectF> pendingCrop = cropOverlay_->pendingCrop();
+  if (!pendingCrop.has_value()) {
+    return;
+  }
+
+  appliedCrop_ = pendingCrop;
+  cropOverlay_->setAppliedCrop(appliedCrop_);
+  updateCropUi();
+  refreshSheetPreview();
+  appendStatusMessage(QStringLiteral(
+    "Applied crop x=%1 y=%2 width=%3 height=%4")
+    .arg(appliedCrop_->x(), 0, 'f', 3)
+    .arg(appliedCrop_->y(), 0, 'f', 3)
+    .arg(appliedCrop_->width(), 0, 'f', 3)
+    .arg(appliedCrop_->height(), 0, 'f', 3));
+}
+
+void MainWindow::clearCrop()
+{
+  appliedCrop_.reset();
+  cropOverlay_->setAppliedCrop(std::nullopt);
+  cropOverlay_->clearPendingCrop();
+  updateCropUi();
+  refreshSheetPreview();
+  appendStatusMessage("Cleared crop.");
+}
+
+void MainWindow::updateCropUi()
+{
+  const bool hasPendingCrop = cropOverlay_->pendingCrop().has_value();
+  const bool hasAppliedCrop = appliedCrop_.has_value();
+  const bool canSelectCrop = projectInfo_.valid && projectInfo_.width > 0 && projectInfo_.height > 0;
+
+  selectCropButton_->setEnabled(canSelectCrop);
+  applyCropButton_->setEnabled(hasPendingCrop);
+  clearCropButton_->setEnabled(hasPendingCrop || hasAppliedCrop);
+
+  if (hasPendingCrop) {
+    const QRectF crop = *cropOverlay_->pendingCrop();
+    cropStatusLabel_->setText(QStringLiteral(
+      "Pending crop %1% x %2%")
+      .arg(crop.width() * 100.0, 0, 'f', 1)
+      .arg(crop.height() * 100.0, 0, 'f', 1));
+    return;
+  }
+
+  if (hasAppliedCrop) {
+    const QRectF crop = *appliedCrop_;
+    cropStatusLabel_->setText(QStringLiteral(
+      "Applied crop %1% x %2%")
+      .arg(crop.width() * 100.0, 0, 'f', 1)
+      .arg(crop.height() * 100.0, 0, 'f', 1));
+    return;
+  }
+
+  cropStatusLabel_->setText("No crop");
 }
 
 void MainWindow::updateMetadata(const ProjectInfo& info)
@@ -158,6 +275,8 @@ void MainWindow::updateMetadata(const ProjectInfo& info)
 
   timelineWidget_->setFramesPerSecond(info.fps);
   timelineWidget_->setDurationMs(info.durationMs);
+  cropOverlay_->setSourceVideoSize(QSize(info.width, info.height));
+  updateCropUi();
   updateTransport(0, info.durationMs);
 }
 
@@ -256,8 +375,16 @@ void MainWindow::createUi()
   headerRow->addWidget(infoLabel_, 1);
   transportLayout->addLayout(headerRow);
 
-  mpvWidget_ = new MpvWidget(transportPane);
-  transportLayout->addWidget(mpvWidget_, 1);
+  auto* playerHost = new QWidget(transportPane);
+  auto* playerStack = new QStackedLayout(playerHost);
+  playerStack->setContentsMargins(0, 0, 0, 0);
+  playerStack->setStackingMode(QStackedLayout::StackAll);
+
+  mpvWidget_ = new MpvWidget(playerHost);
+  cropOverlay_ = new CropOverlayWidget(playerHost);
+  playerStack->addWidget(mpvWidget_);
+  playerStack->addWidget(cropOverlay_);
+  transportLayout->addWidget(playerHost, 1);
 
   auto* controlsRow = new QHBoxLayout;
   auto* playButton = new QPushButton(style()->standardIcon(QStyle::SP_MediaPlay), "Play");
@@ -284,6 +411,22 @@ void MainWindow::createUi()
   metaRow->addStretch(1);
   metaRow->addWidget(frameLabel_);
   transportLayout->addLayout(metaRow);
+
+  auto* cropRow = new QHBoxLayout;
+  selectCropButton_ = new QPushButton("Select Crop");
+  applyCropButton_ = new QPushButton("Apply");
+  clearCropButton_ = new QPushButton("Clear");
+  cropStatusLabel_ = new QLabel("No crop");
+  selectCropButton_->setEnabled(false);
+  applyCropButton_->setEnabled(false);
+  clearCropButton_->setEnabled(false);
+  cropStatusLabel_->setStyleSheet("color: #aab8c4;");
+  cropRow->addWidget(selectCropButton_);
+  cropRow->addWidget(applyCropButton_);
+  cropRow->addWidget(clearCropButton_);
+  cropRow->addSpacing(12);
+  cropRow->addWidget(cropStatusLabel_, 1);
+  transportLayout->addLayout(cropRow);
 
   auto* jumpRow = new QHBoxLayout;
   customJumpSecondsSpin_ = new QDoubleSpinBox(transportPane);
@@ -353,6 +496,9 @@ void MainWindow::createUi()
   auto* projectLabel = new QLabel("Rust CLI bridge for probe/export during migration");
   projectLabel->setWordWrap(true);
   summaryForm->addRow("Project bridge", projectLabel);
+  auto* cropHelpLabel = new QLabel("Use Select Crop, drag on the player, then Apply.");
+  cropHelpLabel->setWordWrap(true);
+  summaryForm->addRow("Crop workflow", cropHelpLabel);
   inspectorLayout->addLayout(summaryForm);
 
   statusText_ = new QTextEdit(inspectorBox);
@@ -382,6 +528,9 @@ void MainWindow::createUi()
   connect(frameForwardButton, &QPushButton::clicked, this, [this] {
     mpvWidget_->stepFrames(1, frameStepSpin_->value());
   });
+  connect(selectCropButton_, &QPushButton::clicked, this, &MainWindow::beginCropSelection);
+  connect(applyCropButton_, &QPushButton::clicked, this, &MainWindow::applyPendingCrop);
+  connect(clearCropButton_, &QPushButton::clicked, this, &MainWindow::clearCrop);
 
   connect(timelineWidget_, &TimelineWidget::scrubPreviewRequested, this, [this](qint64 positionMs) {
     updateTransport(positionMs, qMax<qint64>(timelineWidget_->durationMs(), mpvWidget_->durationMs()));
@@ -395,6 +544,12 @@ void MainWindow::createUi()
   connect(mpvWidget_, &MpvWidget::playerError, this, [this](const QString& message) {
     appendStatusMessage(message);
     statusBar()->showMessage(message, 5000);
+  });
+  connect(cropOverlay_, &CropOverlayWidget::pendingCropChanged, this, [this](bool) {
+    updateCropUi();
+  });
+  connect(cropOverlay_, &CropOverlayWidget::selectionModeChanged, this, [this](bool active) {
+    selectCropButton_->setText(active ? "Selecting..." : "Select Crop");
   });
 }
 
@@ -442,25 +597,7 @@ void MainWindow::appendStatusMessage(const QString& message)
 
 void MainWindow::refreshSheetPreview()
 {
-  if (!projectInfo_.valid || projectInfo_.videoPath.isEmpty() || !sheetPreviewLabel_) {
-    return;
-  }
-
-  sheetPreviewLabel_->setPixmap(QPixmap());
-  sheetPreviewLabel_->setText("Rendering starter sheet preview...");
-
-  QString errorMessage;
-  const QString previewPath = rustBridge_.renderStarterPreview(projectInfo_.videoPath, &errorMessage, 1100);
-  if (previewPath.isEmpty()) {
-    sheetPreviewLabel_->setText(errorMessage.isEmpty()
-      ? "Failed to render starter sheet preview."
-      : errorMessage);
-    appendStatusMessage(sheetPreviewLabel_->text());
-    return;
-  }
-
-  showSheetPreview(previewPath);
-  appendStatusMessage(QStringLiteral("Rendered starter sheet preview to %1").arg(previewPath));
+  beginPreviewRender();
 }
 
 void MainWindow::showSheetPreview(const QString& imagePath)

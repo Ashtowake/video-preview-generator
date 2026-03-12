@@ -26,6 +26,8 @@ add_custom_target(vpg-cli-build
 )
 
 qt_add_executable(video-preview-native
+  src/CropOverlayWidget.cpp
+  src/CropOverlayWidget.hpp
   src/main.cpp
   src/MainWindow.cpp
   src/MainWindow.hpp

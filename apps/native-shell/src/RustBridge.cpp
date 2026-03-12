@@ -118,7 +118,8 @@ ProjectInfo RustBridge::inspectVideo(const QString& videoPath, QString* errorMes
 QString RustBridge::renderStarterPreview(
   const QString& videoPath,
   QString* errorMessage,
-  int maxWidth) const
+  int maxWidth,
+  const std::optional<QRectF>& crop) const
 {
   const QFileInfo sourceInfo(videoPath);
   if (!sourceInfo.exists()) {
@@ -144,11 +145,22 @@ QString RustBridge::renderStarterPreview(
     return {};
   }
 
+  const QByteArray cropCacheFragment = crop.has_value()
+    ? QStringLiteral("%1,%2,%3,%4")
+        .arg(crop->x(), 0, 'f', 6)
+        .arg(crop->y(), 0, 'f', 6)
+        .arg(crop->width(), 0, 'f', 6)
+        .arg(crop->height(), 0, 'f', 6)
+        .toUtf8()
+    : QByteArray("none");
+
   const QByteArray cacheKey = sourceInfo.absoluteFilePath().toUtf8()
     + '|'
     + QByteArray::number(sourceInfo.lastModified().toMSecsSinceEpoch())
     + '|'
-    + QByteArray::number(maxWidth);
+    + QByteArray::number(maxWidth)
+    + '|'
+    + cropCacheFragment;
   const QString previewFileName = QStringLiteral("starter-preview-%1.png")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString previewPath = cacheDir.filePath(previewFileName);
@@ -156,13 +168,27 @@ QString RustBridge::renderStarterPreview(
   QProcess process;
   process.setWorkingDirectory(repoRoot());
 
-  const QStringList invocation = cliInvocation("preview", {
+  QStringList previewArguments{
     videoPath,
     "--out",
     previewPath,
     "--max-width",
     QString::number(maxWidth),
-  });
+  };
+  if (crop.has_value()) {
+    previewArguments.append({
+      "--crop-x",
+      QString::number(crop->x(), 'f', 6),
+      "--crop-y",
+      QString::number(crop->y(), 'f', 6),
+      "--crop-width",
+      QString::number(crop->width(), 'f', 6),
+      "--crop-height",
+      QString::number(crop->height(), 'f', 6),
+    });
+  }
+
+  const QStringList invocation = cliInvocation("preview", previewArguments);
   if (invocation.isEmpty()) {
     if (errorMessage) {
       *errorMessage = "Rust CLI executable is not available.";

@@ -1,6 +1,9 @@
 #pragma once
 
+#include <optional>
+
 #include <QObject>
+#include <QRectF>
 
 #include "ProjectInfo.hpp"
 
@@ -20,7 +23,8 @@ public:
   [[nodiscard]] QString renderStarterPreview(
     const QString& videoPath,
     QString* errorMessage = nullptr,
-    int maxWidth = 1200) const;
+    int maxWidth = 1200,
+    const std::optional<QRectF>& crop = std::nullopt) const;
   [[nodiscard]] QString cliPath() const;
 
 private:

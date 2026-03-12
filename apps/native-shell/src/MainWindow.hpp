@@ -1,16 +1,21 @@
 #pragma once
 
+#include <optional>
+
 #include <QMainWindow>
+#include <QRectF>
 
 #include "ProjectInfo.hpp"
 #include "RustBridge.hpp"
 
 class QLabel;
+class QPushButton;
 class QDoubleSpinBox;
 class QSpinBox;
 class QTextEdit;
 class QPixmap;
 
+class CropOverlayWidget;
 class MpvWidget;
 class TimelineWidget;
 
@@ -28,6 +33,11 @@ public:
 
 private:
   void beginBackgroundLoad(const QString& path);
+  void beginPreviewRender();
+  void beginCropSelection();
+  void applyPendingCrop();
+  void clearCrop();
+  void updateCropUi();
   void openVideo();
   void updateMetadata(const ProjectInfo& info);
   void updateTransport(qint64 positionMs, qint64 durationMs);
@@ -48,12 +58,19 @@ private:
   QLabel* timeLabel_ = nullptr;
   QLabel* frameLabel_ = nullptr;
   QLabel* backendLabel_ = nullptr;
+  QLabel* cropStatusLabel_ = nullptr;
   QLabel* sheetPreviewLabel_ = nullptr;
   TimelineWidget* timelineWidget_ = nullptr;
+  CropOverlayWidget* cropOverlay_ = nullptr;
   QDoubleSpinBox* customJumpSecondsSpin_ = nullptr;
   QSpinBox* frameStepSpin_ = nullptr;
+  QPushButton* selectCropButton_ = nullptr;
+  QPushButton* applyCropButton_ = nullptr;
+  QPushButton* clearCropButton_ = nullptr;
   QTextEdit* statusText_ = nullptr;
   ProjectInfo projectInfo_;
   QString sheetPreviewPath_;
   int loadRequestId_ = 0;
+  int previewRequestId_ = 0;
+  std::optional<QRectF> appliedCrop_;
 };

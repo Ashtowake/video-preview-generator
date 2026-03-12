@@ -25,6 +25,14 @@ enum Commands {
         out: PathBuf,
         #[arg(long, default_value_t = 1200)]
         max_width: u32,
+        #[arg(long)]
+        crop_x: Option<f64>,
+        #[arg(long)]
+        crop_y: Option<f64>,
+        #[arg(long)]
+        crop_width: Option<f64>,
+        #[arg(long)]
+        crop_height: Option<f64>,
     },
     Export {
         project: PathBuf,
@@ -45,7 +53,11 @@ fn main() -> Result<()> {
             video,
             out,
             max_width,
-        } => preview(video, out, max_width),
+            crop_x,
+            crop_y,
+            crop_width,
+            crop_height,
+        } => preview(video, out, max_width, crop_x, crop_y, crop_width, crop_height),
         Commands::Export { project, out } => export(project, out),
         Commands::Batch { project } => batch(project),
     }
@@ -69,9 +81,35 @@ fn inspect(video: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn preview(video: PathBuf, out: PathBuf, max_width: u32) -> Result<()> {
+fn preview(
+    video: PathBuf,
+    out: PathBuf,
+    max_width: u32,
+    crop_x: Option<f64>,
+    crop_y: Option<f64>,
+    crop_width: Option<f64>,
+    crop_height: Option<f64>,
+) -> Result<()> {
     let service = MediaService;
-    let project = service.load_video_project(&video.display().to_string())?;
+    let mut project = service.load_video_project(&video.display().to_string())?;
+    let crop_arguments = [crop_x, crop_y, crop_width, crop_height];
+    let crop_arguments_supplied = crop_arguments.iter().any(Option::is_some);
+    if crop_arguments_supplied {
+        let (Some(x), Some(y), Some(width), Some(height)) =
+            (crop_x, crop_y, crop_width, crop_height)
+        else {
+            anyhow::bail!(
+                "preview crop requires --crop-x, --crop-y, --crop-width, and --crop-height together"
+            );
+        };
+        project.video.crop = Some(vpg_core::VideoCrop {
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+
     let preview = service.render_preview(&project, Some(max_width))?;
     let encoded = preview
         .data_url
