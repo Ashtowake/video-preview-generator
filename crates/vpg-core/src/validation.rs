@@ -44,6 +44,33 @@ pub fn validate_project(project: &ProjectFile) -> Vec<ValidationIssue> {
         });
     }
 
+    if let Some(crop) = project.video.crop {
+        if crop.width <= 0.0 || crop.width > 1.0 || crop.height <= 0.0 || crop.height > 1.0 {
+            issues.push(ValidationIssue {
+                level: ValidationLevel::Error,
+                path: "video.crop".to_string(),
+                message: "crop width and height must both be greater than 0 and at most 1"
+                    .to_string(),
+            });
+        }
+
+        if crop.x < 0.0 || crop.y < 0.0 || crop.x >= 1.0 || crop.y >= 1.0 {
+            issues.push(ValidationIssue {
+                level: ValidationLevel::Error,
+                path: "video.crop".to_string(),
+                message: "crop origin must stay inside the normalized video frame".to_string(),
+            });
+        }
+
+        if crop.x + crop.width > 1.0 || crop.y + crop.height > 1.0 {
+            issues.push(ValidationIssue {
+                level: ValidationLevel::Error,
+                path: "video.crop".to_string(),
+                message: "crop rectangle must fit inside the normalized video frame".to_string(),
+            });
+        }
+    }
+
     if project.analysis_mode == AnalysisMode::QuickPreview && project.playback.frame_step > 1 {
         issues.push(ValidationIssue {
             level: ValidationLevel::Warning,
@@ -80,5 +107,19 @@ mod tests {
 
         let issues = validate_project(&project);
         assert_eq!(issues[0].level, ValidationLevel::Error);
+    }
+
+    #[test]
+    fn invalid_crop_is_reported() {
+        let mut project = ProjectFile::starter("movie.mp4");
+        project.video.crop = Some(crate::project::VideoCrop {
+            x: 0.75,
+            y: 0.2,
+            width: 0.5,
+            height: 0.5,
+        });
+
+        let issues = validate_project(&project);
+        assert!(issues.iter().any(|issue| issue.path == "video.crop"));
     }
 }

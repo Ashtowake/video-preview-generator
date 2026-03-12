@@ -9,6 +9,15 @@ export interface VideoSource {
   frameCount?: number;
   width?: number;
   height?: number;
+  crop?: VideoCrop;
+}
+
+/** Normalized crop rectangle relative to the decoded source frame. */
+export interface VideoCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** Transport state kept with the project so seeking survives save/load. */

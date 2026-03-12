@@ -34,6 +34,7 @@ impl ProjectFile {
                 frame_count: Some(1_440),
                 width: Some(1920),
                 height: Some(1080),
+                crop: None,
             },
             playback: PlaybackSettings::default(),
             range: TimeRange {
@@ -82,6 +83,18 @@ pub struct VideoSource {
     pub frame_count: Option<u64>,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<VideoCrop>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+/// Normalized crop rectangle relative to the decoded video frame.
+pub struct VideoCrop {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -298,7 +311,7 @@ pub struct BatchSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProjectFile, TileSelection};
+    use super::{ProjectFile, TileSelection, VideoCrop, VideoSource};
 
     #[test]
     fn starter_project_places_tiles_across_the_default_grid() {
@@ -329,6 +342,43 @@ mod tests {
                 "kind": "manual",
                 "frameIndex": 42,
                 "timeMs": 1_750,
+            })
+        );
+    }
+
+    #[test]
+    fn video_source_serializes_optional_crop_with_frontend_shape() {
+        let video = VideoSource {
+            path: "movie.mp4".to_string(),
+            duration_ms: Some(1_000),
+            fps: Some(24.0),
+            frame_count: Some(24),
+            width: Some(1920),
+            height: Some(1080),
+            crop: Some(VideoCrop {
+                x: 0.1,
+                y: 0.2,
+                width: 0.6,
+                height: 0.5,
+            }),
+        };
+
+        let value = serde_json::to_value(video).expect("video source should serialize");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "path": "movie.mp4",
+                "durationMs": 1_000,
+                "fps": 24.0,
+                "frameCount": 24,
+                "width": 1920,
+                "height": 1080,
+                "crop": {
+                    "x": 0.1,
+                    "y": 0.2,
+                    "width": 0.6,
+                    "height": 0.5
+                }
             })
         );
     }

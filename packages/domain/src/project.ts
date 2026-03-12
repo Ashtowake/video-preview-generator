@@ -66,6 +66,7 @@ export const createStarterProject = (videoPath = "unloaded-video.mp4"): ProjectF
       frameCount: 1_440,
       width: 1920,
       height: 1080,
+      crop: undefined,
     },
     playback: defaultPlayback(),
     range: { startMs: 0, endMs: 60_000, sampleStartMs: 0 },

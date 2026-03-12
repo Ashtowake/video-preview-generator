@@ -6,7 +6,7 @@ Projects are stored as versioned `.vpg.json` files.
 
 - `version`: schema version
 - `analysisMode`: `quick_preview` or `full_fidelity`
-- `video`: source path and known media metadata
+- `video`: source path, known media metadata, and optional normalized crop rectangle
 - `playback`: playhead state, custom jump, and frame-step configuration
 - `range`: selected in/out range plus `sampleStartMs`, which shifts the first auto-filled frame before the remaining samples are evenly distributed
 - `grid`: row/column configuration and spacing
@@ -45,8 +45,28 @@ Automatic selections are serialized as:
 }
 ```
 
+## Crop Model
+
+Projects can optionally store a normalized crop rectangle under `video.crop`:
+
+```json
+{
+  "x": 0.125,
+  "y": 0.10,
+  "width": 0.75,
+  "height": 0.8
+}
+```
+
+Notes:
+
+- `x` and `y` are normalized offsets from the top-left corner of the decoded source frame.
+- `width` and `height` are normalized sizes relative to the full source frame.
+- Validation rejects crop rectangles that extend outside `[0, 1]`.
+- Preview rendering, sharpness analysis, and export should all respect the same stored crop.
+
 ## Stability Notes
 
 - The project file is language-neutral.
 - New schema versions should be additive when possible.
-- Validation should reject overlapping spans and invalid time ranges before export.
+- Validation should reject overlapping spans, invalid time ranges, and invalid crop rectangles before export.

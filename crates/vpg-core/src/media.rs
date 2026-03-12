@@ -11,7 +11,9 @@ use image::{DynamicImage, ImageFormat};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::assign_auto_tiles;
-use crate::project::{AnalysisMode, PlaybackSettings, ProjectFile, TileSelection, TimeRange};
+use crate::project::{
+    AnalysisMode, PlaybackSettings, ProjectFile, TileSelection, TimeRange, VideoCrop,
+};
 use crate::seek::{clamp_frame_index, frame_index_at_time_ms, seek_time_for_frame_index};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,12 +162,15 @@ pub fn probe_video(video_path: &Path) -> Result<VideoProbe> {
 /// Extracts a preview frame and returns it as an inline PNG data URL.
 pub fn preview_frame(project: &ProjectFile, time_ms: u64, max_width: u32) -> Result<PreviewFrame> {
     let safe_time_ms = clamp_seek_time_ms(project, time_ms);
-    let image = extract_frame_image(
-        Path::new(&project.video.path),
-        safe_time_ms,
-        Some(max_width),
-        project.analysis_mode == AnalysisMode::QuickPreview,
-    )?;
+    let image = apply_project_crop(
+        project,
+        &extract_frame_image(
+            Path::new(&project.video.path),
+            safe_time_ms,
+            Some(max_width),
+            project.analysis_mode == AnalysisMode::QuickPreview,
+        )?,
+    );
     let mut bytes = Vec::new();
     image
         .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
@@ -220,7 +225,10 @@ pub fn find_sharpest_neighbours(
                 fps,
                 project.video.duration_ms.unwrap_or(60_000),
             );
-            let image = extract_frame_image(path, candidate_time, Some(320), false)?;
+            let image = apply_project_crop(
+                project,
+                &extract_frame_image(path, candidate_time, Some(320), false)?,
+            );
             let score = laplacian_variance(&image);
             let better_score = score > best_candidate.2;
             // Tie-break toward the nearest frame so repeated runs do not drift unnecessarily.
@@ -296,6 +304,58 @@ pub fn extract_frame_image(
         }
         Err(error) => Err(error),
     }
+}
+
+/// Applies the project's stored crop rectangle to an extracted frame.
+pub fn apply_project_crop(project: &ProjectFile, frame: &DynamicImage) -> DynamicImage {
+    crop_frame_image(frame, project.video.crop.as_ref())
+}
+
+/// Crops an extracted frame using normalized video coordinates.
+pub fn crop_frame_image(frame: &DynamicImage, crop: Option<&VideoCrop>) -> DynamicImage {
+    let Some((left, top, width, height)) =
+        normalized_crop_bounds(frame.width(), frame.height(), crop)
+    else {
+        return frame.clone();
+    };
+
+    frame.crop_imm(left, top, width, height)
+}
+
+/// Resolves a normalized crop rectangle into concrete pixel bounds.
+pub fn normalized_crop_bounds(
+    source_width: u32,
+    source_height: u32,
+    crop: Option<&VideoCrop>,
+) -> Option<(u32, u32, u32, u32)> {
+    let crop = crop?;
+    if source_width == 0 || source_height == 0 {
+        return None;
+    }
+
+    let x = crop.x.clamp(0.0, 1.0);
+    let y = crop.y.clamp(0.0, 1.0);
+    let width = crop.width.clamp(0.0, 1.0);
+    let height = crop.height.clamp(0.0, 1.0);
+    if width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+
+    let left = (x * source_width as f64).floor() as u32;
+    let top = (y * source_height as f64).floor() as u32;
+    let right = ((x + width).min(1.0) * source_width as f64).ceil() as u32;
+    let bottom = ((y + height).min(1.0) * source_height as f64).ceil() as u32;
+
+    let crop_width = right
+        .saturating_sub(left)
+        .max(1)
+        .min(source_width.saturating_sub(left));
+    let crop_height = bottom
+        .saturating_sub(top)
+        .max(1)
+        .min(source_height.saturating_sub(top));
+
+    Some((left, top, crop_width, crop_height))
 }
 
 fn run_extract_frame_command(
@@ -449,7 +509,9 @@ fn latest_seek_time_ms(project: &ProjectFile) -> u64 {
 mod tests {
     use image::{DynamicImage, Rgb, RgbImage};
 
-    use super::laplacian_variance;
+    use crate::project::VideoCrop;
+
+    use super::{crop_frame_image, laplacian_variance, normalized_crop_bounds};
 
     #[test]
     fn laplacian_variance_prefers_sharper_images() {
@@ -463,5 +525,41 @@ mod tests {
         let soft = DynamicImage::ImageRgb8(RgbImage::from_fn(8, 8, |_, _| Rgb([127, 127, 127])));
 
         assert!(laplacian_variance(&sharp) > laplacian_variance(&soft));
+    }
+
+    #[test]
+    fn normalized_crop_bounds_map_to_pixel_rect() {
+        let bounds = normalized_crop_bounds(
+            100,
+            80,
+            Some(&VideoCrop {
+                x: 0.2,
+                y: 0.25,
+                width: 0.5,
+                height: 0.5,
+            }),
+        );
+
+        assert_eq!(bounds, Some((20, 20, 50, 40)));
+    }
+
+    #[test]
+    fn crop_frame_image_extracts_selected_area() {
+        let frame =
+            DynamicImage::ImageRgb8(RgbImage::from_fn(10, 8, |x, y| Rgb([x as u8, y as u8, 0])));
+        let cropped = crop_frame_image(
+            &frame,
+            Some(&VideoCrop {
+                x: 0.2,
+                y: 0.25,
+                width: 0.5,
+                height: 0.5,
+            }),
+        );
+
+        assert_eq!(cropped.width(), 5);
+        assert_eq!(cropped.height(), 4);
+        assert_eq!(cropped.to_rgb8().get_pixel(0, 0)[0], 2);
+        assert_eq!(cropped.to_rgb8().get_pixel(0, 0)[1], 2);
     }
 }

@@ -47,6 +47,39 @@ export const validateProject = (project: ProjectFile): ValidationIssue[] => {
     });
   }
 
+  if (project.video.crop) {
+    const { crop } = project.video;
+
+    if (
+      crop.width <= 0 ||
+      crop.width > 1 ||
+      crop.height <= 0 ||
+      crop.height > 1
+    ) {
+      issues.push({
+        level: "error",
+        path: "video.crop",
+        message: "Crop width and height must both be greater than 0 and at most 1.",
+      });
+    }
+
+    if (crop.x < 0 || crop.y < 0 || crop.x >= 1 || crop.y >= 1) {
+      issues.push({
+        level: "error",
+        path: "video.crop",
+        message: "Crop origin must stay inside the normalized video frame.",
+      });
+    }
+
+    if (crop.x + crop.width > 1 || crop.y + crop.height > 1) {
+      issues.push({
+        level: "error",
+        path: "video.crop",
+        message: "Crop rectangle must fit inside the normalized video frame.",
+      });
+    }
+  }
+
   return issues.concat(validateGridSpans(project.tiles, project.grid));
 };
 

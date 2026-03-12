@@ -10,7 +10,9 @@ use image::imageops::{overlay, resize, FilterType};
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 
-use crate::media::{effective_tile_time_ms, extract_frame_image};
+use crate::media::{
+    apply_project_crop, effective_tile_time_ms, extract_frame_image, normalized_crop_bounds,
+};
 use crate::project::{ExportFormat, ProjectFile, TileSelection};
 use crate::seek::display_frame_number;
 
@@ -143,12 +145,15 @@ pub fn render_project(project: &ProjectFile, fast_seek: bool) -> Result<DynamicI
         let y = outer + metadata_height + tile.span.row * (cell_height + gutter);
         let width = tile.span.column_span * cell_width + (tile.span.column_span - 1) * gutter;
         let height = tile.span.row_span * cell_height + (tile.span.row_span - 1) * gutter;
-        let frame = extract_frame_image(
-            Path::new(&project.video.path),
-            time_ms,
-            Some(width.max(1)),
-            fast_seek,
-        )?;
+        let frame = apply_project_crop(
+            project,
+            &extract_frame_image(
+                Path::new(&project.video.path),
+                time_ms,
+                Some(width.max(1)),
+                fast_seek,
+            )?,
+        );
         let tile_image = prepare_tile_image(project, &frame, width, height);
 
         if project.style.frame_shadow_px > 0 {
@@ -168,7 +173,10 @@ pub fn render_project(project: &ProjectFile, fast_seek: bool) -> Result<DynamicI
         if project.style.show_timestamps {
             let label = match tile.selection {
                 TileSelection::ManualFrame { frame_index, .. } => {
-                    format!("#{}", display_frame_number(frame_index, project.video.frame_count))
+                    format!(
+                        "#{}",
+                        display_frame_number(frame_index, project.video.frame_count)
+                    )
                 }
                 TileSelection::Auto => "AUTO".to_string(),
             };
@@ -258,8 +266,14 @@ fn resolve_output_path(project: &ProjectFile, output_override: Option<&str>) -> 
 }
 
 fn source_aspect_ratio(project: &ProjectFile) -> f32 {
-    let width = project.video.width.unwrap_or(1920) as f32;
-    let height = project.video.height.unwrap_or(1080) as f32;
+    let source_width = project.video.width.unwrap_or(1920);
+    let source_height = project.video.height.unwrap_or(1080);
+    let (width, height) =
+        normalized_crop_bounds(source_width, source_height, project.video.crop.as_ref())
+            .map(|(_, _, width, height)| (width, height))
+            .unwrap_or((source_width, source_height));
+    let width = width as f32;
+    let height = height as f32;
     (width / height).max(0.25)
 }
 

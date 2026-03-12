@@ -17,6 +17,7 @@ It currently provides:
 - a native main window
 - a `libmpv`-backed preview surface
 - playback, stop, seek, custom jump, and frame-step controls
+- a native transport timeline that will later host frame thumbnails and range handles
 - a Rust CLI bridge for video metadata probing
 - right-hand workspace placeholders for the upcoming sheet canvas and inspector migration
 
@@ -42,5 +43,6 @@ The CMake target builds `vpg-cli` automatically because the current native bridg
 
 1. Replace the temporary CLI bridge with a direct Rust/native interface.
 2. Move sheet preview and export controls into the native shell.
-3. Reattach project editing surfaces to the same Rust project model.
-4. Remove the Tauri shell once the native editor reaches feature parity for the core workflow.
+3. Add crop workflow support as `Crop -> Select Area -> Apply`, writing a normalized rectangle into the shared Rust project model.
+4. Reattach project editing surfaces to the same Rust project model.
+5. Remove the Tauri shell once the native editor reaches feature parity for the core workflow.
