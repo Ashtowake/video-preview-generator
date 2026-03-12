@@ -180,8 +180,7 @@ void CropOverlayWidget::mouseReleaseEvent(QMouseEvent* event)
 
 void CropOverlayWidget::handlePress(const QPointF& position)
 {
-  const QRectF videoRect = fittedVideoRect();
-  if (!videoRect.contains(position)) {
+  if (fittedVideoRect().isEmpty()) {
     return;
   }
 

@@ -4,7 +4,10 @@ use anyhow::{Context, Result};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use clap::{Parser, Subcommand};
-use vpg_core::{validate_project, DiagnosticsBundle, MediaService, ProjectFile, ValidationLevel};
+use vpg_core::{
+    assign_auto_tiles, validate_project, DiagnosticsBundle, MediaService, ProjectFile,
+    ValidationLevel,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "video-preview")]
@@ -33,6 +36,10 @@ enum Commands {
         crop_width: Option<f64>,
         #[arg(long)]
         crop_height: Option<f64>,
+        #[arg(long)]
+        range_start: Option<u64>,
+        #[arg(long)]
+        range_end: Option<u64>,
     },
     Export {
         project: PathBuf,
@@ -57,7 +64,19 @@ fn main() -> Result<()> {
             crop_y,
             crop_width,
             crop_height,
-        } => preview(video, out, max_width, crop_x, crop_y, crop_width, crop_height),
+            range_start,
+            range_end,
+        } => preview(
+            video,
+            out,
+            max_width,
+            crop_x,
+            crop_y,
+            crop_width,
+            crop_height,
+            range_start,
+            range_end,
+        ),
         Commands::Export { project, out } => export(project, out),
         Commands::Batch { project } => batch(project),
     }
@@ -89,6 +108,8 @@ fn preview(
     crop_y: Option<f64>,
     crop_width: Option<f64>,
     crop_height: Option<f64>,
+    range_start: Option<u64>,
+    range_end: Option<u64>,
 ) -> Result<()> {
     let service = MediaService;
     let mut project = service.load_video_project(&video.display().to_string())?;
@@ -108,6 +129,26 @@ fn preview(
             width,
             height,
         });
+    }
+    if range_start.is_some() || range_end.is_some() {
+        let duration_ms = project.video.duration_ms.unwrap_or(project.range.end_ms.max(1));
+        let start_ms = range_start.unwrap_or(project.range.start_ms).min(duration_ms.saturating_sub(1));
+        let end_ms = range_end.unwrap_or(project.range.end_ms).min(duration_ms);
+        if end_ms <= start_ms {
+            anyhow::bail!("preview range requires --range-end greater than --range-start");
+        }
+
+        project.range.start_ms = start_ms;
+        project.range.end_ms = end_ms;
+        project.range.sample_start_ms = start_ms;
+        assign_auto_tiles(
+            &mut project.tiles,
+            project.range.start_ms,
+            project.range.end_ms,
+            project.range.sample_start_ms,
+            project.video.fps.unwrap_or(24.0),
+            project.video.frame_count,
+        );
     }
 
     let preview = service.render_preview(&project, Some(max_width))?;

@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QMimeData>
 #include <QFormLayout>
 #include <QFutureWatcher>
 #include <QGroupBox>
@@ -45,6 +46,7 @@ MainWindow::MainWindow(QWidget* parent)
 {
   setWindowTitle("Video Preview Generator");
   resize(1600, 960);
+  setAcceptDrops(true);
   applyDarkPalette();
   createUi();
   createMenuBar();
@@ -62,6 +64,56 @@ void MainWindow::openVideo()
     return;
   }
 
+  loadVideo(path);
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+  if (!event->mimeData()->hasUrls()) {
+    event->ignore();
+    return;
+  }
+
+  const QList<QUrl> urls = event->mimeData()->urls();
+  const bool hasLocalFile = std::any_of(urls.begin(), urls.end(), [](const QUrl& url) {
+    return url.isLocalFile();
+  });
+
+  if (!hasLocalFile) {
+    event->ignore();
+    return;
+  }
+
+  event->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+  if (!event->mimeData()->hasUrls()) {
+    event->ignore();
+    return;
+  }
+
+  for (const QUrl& url : event->mimeData()->urls()) {
+    if (!url.isLocalFile()) {
+      continue;
+    }
+
+    const QString localPath = url.toLocalFile();
+    if (localPath.isEmpty()) {
+      continue;
+    }
+
+    loadVideo(localPath);
+    event->acceptProposedAction();
+    return;
+  }
+
+  event->ignore();
+}
+
+void MainWindow::loadVideo(const QString& path)
+{
   loadRequestId_ += 1;
   previewRequestId_ = 0;
   const QFileInfo fileInfo(path);
@@ -69,11 +121,14 @@ void MainWindow::openVideo()
   projectInfo_.videoPath = path;
   projectInfo_.displayName = fileInfo.fileName();
   projectInfo_.valid = true;
+  rangeStartMs_ = 0;
+  rangeEndMs_ = 0;
   appliedCrop_.reset();
   titleLabel_->setText(projectInfo_.displayName);
   infoLabel_->setText("Loading metadata in the background...");
   infoLabel_->setToolTip(path);
   updateTransport(0, 0);
+  updateSelectedRange(0, 0, false);
   sheetPreviewWidget_->clearPreview("Rendering starter sheet preview in the background...");
   cropOverlay_->setSourceVideoSize(QSize());
   cropOverlay_->setAppliedCrop(std::nullopt);
@@ -129,6 +184,8 @@ void MainWindow::beginPreviewRender()
   const int requestId = previewRequestId_;
   const QString videoPath = projectInfo_.videoPath;
   const std::optional<QRectF> crop = appliedCrop_;
+  const qint64 rangeStartMs = rangeStartMs_;
+  const qint64 rangeEndMs = rangeEndMs_;
 
   sheetPreviewWidget_->clearPreview(crop.has_value()
     ? "Rendering cropped sheet preview in the background..."
@@ -157,10 +214,16 @@ void MainWindow::beginPreviewRender()
       : previewError);
   });
 
-  watcher->setFuture(QtConcurrent::run([videoPath, crop]() {
+  watcher->setFuture(QtConcurrent::run([videoPath, crop, rangeStartMs, rangeEndMs]() {
     QString errorMessage;
     RustBridge bridge;
-    const QString previewPath = bridge.renderStarterPreview(videoPath, &errorMessage, 1100, crop);
+    const QString previewPath = bridge.renderStarterPreview(
+      videoPath,
+      &errorMessage,
+      1100,
+      crop,
+      std::optional<qint64>(rangeStartMs),
+      std::optional<qint64>(rangeEndMs));
     return qMakePair(previewPath, errorMessage);
   }));
 }
@@ -253,6 +316,7 @@ void MainWindow::updateMetadata(const ProjectInfo& info)
 
   timelineWidget_->setFramesPerSecond(info.fps);
   timelineWidget_->setDurationMs(info.durationMs);
+  updateSelectedRange(0, info.durationMs, false);
   cropOverlay_->setSourceVideoSize(QSize(info.width, info.height));
   updateCropUi();
   updateTransport(0, info.durationMs);
@@ -260,11 +324,61 @@ void MainWindow::updateMetadata(const ProjectInfo& info)
 
 void MainWindow::updateTransport(qint64 positionMs, qint64 durationMs)
 {
+  if (!mpvWidget_->isPaused()
+    && rangeEndMs_ > rangeStartMs_
+    && durationMs > 0
+    && positionMs >= rangeEndMs_) {
+    mpvWidget_->pause();
+    mpvWidget_->seekAbsoluteMs(rangeEndMs_);
+    return;
+  }
+
   timelineWidget_->setDurationMs(durationMs);
-  timelineWidget_->setPositionMs(positionMs);
+  if (!timelineWidget_->isScrubbing()) {
+    timelineWidget_->setPositionMs(positionMs);
+  }
 
   timeLabel_->setText(QStringLiteral("%1 / %2").arg(formatTime(positionMs), formatTime(durationMs)));
   frameLabel_->setText(QStringLiteral("Frame %1").arg(displayFrameNumber(positionMs)));
+}
+
+void MainWindow::playSelectedRange()
+{
+  if (!projectInfo_.valid) {
+    return;
+  }
+
+  const qint64 targetStartMs = qMax<qint64>(0, rangeStartMs_);
+  const qint64 currentTimeMs = mpvWidget_->currentTimeMs();
+  const bool outsideSelectedRange = currentTimeMs < targetStartMs
+    || (rangeEndMs_ > targetStartMs && currentTimeMs >= rangeEndMs_);
+
+  if (outsideSelectedRange) {
+    mpvWidget_->seekAbsoluteMs(targetStartMs);
+  }
+
+  mpvWidget_->play();
+}
+
+void MainWindow::stopSelectedRange()
+{
+  mpvWidget_->pause();
+  mpvWidget_->seekAbsoluteMs(qMax<qint64>(0, rangeStartMs_));
+}
+
+void MainWindow::updateSelectedRange(qint64 startMs, qint64 endMs, bool refreshPreview)
+{
+  rangeStartMs_ = qMax<qint64>(0, startMs);
+  rangeEndMs_ = qMax(rangeStartMs_, endMs);
+  timelineWidget_->setSelectionRangeMs(rangeStartMs_, rangeEndMs_);
+  rangeLabel_->setText(
+    rangeEndMs_ > 0
+      ? QStringLiteral("Range %1 - %2").arg(formatTime(rangeStartMs_), formatTime(rangeEndMs_))
+      : QStringLiteral("Range 0:00.000 - 0:00.000"));
+
+  if (refreshPreview && projectInfo_.valid) {
+    refreshSheetPreview();
+  }
 }
 
 void MainWindow::applyDarkPalette()
@@ -393,7 +507,10 @@ void MainWindow::createUi()
   auto* metaRow = new QHBoxLayout;
   timeLabel_ = new QLabel("0:00.000 / 0:00.000");
   frameLabel_ = new QLabel("Frame 1");
+  rangeLabel_ = new QLabel("Range 0:00.000 - 0:00.000");
   metaRow->addWidget(timeLabel_);
+  metaRow->addStretch(1);
+  metaRow->addWidget(rangeLabel_);
   metaRow->addStretch(1);
   metaRow->addWidget(frameLabel_);
   transportLayout->addLayout(metaRow);
@@ -515,9 +632,9 @@ void MainWindow::createUi()
   devLayout->addWidget(logBox, 1);
   devOverlay_->hide();
 
-  connect(playButton, &QPushButton::clicked, mpvWidget_, &MpvWidget::play);
+  connect(playButton, &QPushButton::clicked, this, &MainWindow::playSelectedRange);
   connect(pauseButton, &QPushButton::clicked, mpvWidget_, &MpvWidget::pause);
-  connect(stopButton, &QPushButton::clicked, mpvWidget_, &MpvWidget::stopPlayback);
+  connect(stopButton, &QPushButton::clicked, this, &MainWindow::stopSelectedRange);
   connect(frameBackButton, &QPushButton::clicked, this, [this] {
     mpvWidget_->stepFrames(-1, frameStepSpin_->value());
   });
@@ -529,11 +646,20 @@ void MainWindow::createUi()
   connect(clearCropButton_, &QPushButton::clicked, this, &MainWindow::clearCrop);
 
   connect(timelineWidget_, &TimelineWidget::scrubPreviewRequested, this, [this](qint64 positionMs) {
-    updateTransport(positionMs, qMax<qint64>(timelineWidget_->durationMs(), mpvWidget_->durationMs()));
+    const qint64 durationMs = qMax<qint64>(timelineWidget_->durationMs(), mpvWidget_->durationMs());
+    timeLabel_->setText(QStringLiteral("%1 / %2").arg(formatTime(positionMs), formatTime(durationMs)));
+    frameLabel_->setText(QStringLiteral("Frame %1").arg(displayFrameNumber(positionMs)));
     mpvWidget_->seekPreviewMs(positionMs);
   });
   connect(timelineWidget_, &TimelineWidget::scrubFinished, this, [this](qint64 positionMs) {
     mpvWidget_->seekAbsoluteMs(positionMs);
+  });
+  connect(timelineWidget_, &TimelineWidget::rangePreviewChanged, this, [this](qint64 startMs, qint64 endMs) {
+    updateSelectedRange(startMs, endMs, false);
+  });
+  connect(timelineWidget_, &TimelineWidget::rangeChangeFinished, this, [this](qint64 startMs, qint64 endMs) {
+    updateSelectedRange(startMs, endMs, true);
+    appendStatusMessage(QStringLiteral("Updated range to %1 - %2").arg(formatTime(startMs), formatTime(endMs)));
   });
 
   connect(mpvWidget_, &MpvWidget::positionChanged, this, &MainWindow::updateTransport);
@@ -564,13 +690,13 @@ void MainWindow::createMenuBar()
   auto* playbackMenu = menuBar()->addMenu("&Playback");
   auto* playAction = playbackMenu->addAction("&Play");
   playAction->setShortcut(Qt::Key_Space);
-  connect(playAction, &QAction::triggered, mpvWidget_, &MpvWidget::play);
+  connect(playAction, &QAction::triggered, this, &MainWindow::playSelectedRange);
 
   auto* pauseAction = playbackMenu->addAction("P&ause");
   connect(pauseAction, &QAction::triggered, mpvWidget_, &MpvWidget::pause);
 
   auto* stopAction = playbackMenu->addAction("&Stop");
-  connect(stopAction, &QAction::triggered, mpvWidget_, &MpvWidget::stopPlayback);
+  connect(stopAction, &QAction::triggered, this, &MainWindow::stopSelectedRange);
 
   playbackMenu->addSeparator();
   auto* stepBackAction = playbackMenu->addAction("Step &Backward");

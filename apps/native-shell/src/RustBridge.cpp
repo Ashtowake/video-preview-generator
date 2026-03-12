@@ -119,7 +119,9 @@ QString RustBridge::renderStarterPreview(
   const QString& videoPath,
   QString* errorMessage,
   int maxWidth,
-  const std::optional<QRectF>& crop) const
+  const std::optional<QRectF>& crop,
+  std::optional<qint64> rangeStartMs,
+  std::optional<qint64> rangeEndMs) const
 {
   const QFileInfo sourceInfo(videoPath);
   if (!sourceInfo.exists()) {
@@ -153,6 +155,9 @@ QString RustBridge::renderStarterPreview(
         .arg(crop->height(), 0, 'f', 6)
         .toUtf8()
     : QByteArray("none");
+  const QByteArray rangeCacheFragment = (rangeStartMs.has_value() && rangeEndMs.has_value())
+    ? QStringLiteral("%1,%2").arg(*rangeStartMs).arg(*rangeEndMs).toUtf8()
+    : QByteArray("full");
 
   const QByteArray cacheKey = sourceInfo.absoluteFilePath().toUtf8()
     + '|'
@@ -160,7 +165,9 @@ QString RustBridge::renderStarterPreview(
     + '|'
     + QByteArray::number(maxWidth)
     + '|'
-    + cropCacheFragment;
+    + cropCacheFragment
+    + '|'
+    + rangeCacheFragment;
   const QString previewFileName = QStringLiteral("starter-preview-%1.png")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString previewPath = cacheDir.filePath(previewFileName);
@@ -185,6 +192,14 @@ QString RustBridge::renderStarterPreview(
       QString::number(crop->width(), 'f', 6),
       "--crop-height",
       QString::number(crop->height(), 'f', 6),
+    });
+  }
+  if (rangeStartMs.has_value() && rangeEndMs.has_value()) {
+    previewArguments.append({
+      "--range-start",
+      QString::number(*rangeStartMs),
+      "--range-end",
+      QString::number(*rangeEndMs),
     });
   }
 

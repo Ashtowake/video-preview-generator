@@ -11,19 +11,16 @@
 
 namespace {
 
-constexpr int kPreviewSeekIntervalMs = 6;
+constexpr int kHandleHitRadiusPx = 10;
+constexpr int kHandleWidthPx = 10;
 
 } // namespace
 
 TimelineWidget::TimelineWidget(QWidget* parent)
   : QWidget(parent)
 {
-  setMinimumHeight(94);
+  setMinimumHeight(110);
   setMouseTracking(true);
-
-  previewTimer_.setInterval(kPreviewSeekIntervalMs);
-  previewTimer_.setSingleShot(true);
-  connect(&previewTimer_, &QTimer::timeout, this, &TimelineWidget::dispatchPendingPreview);
 }
 
 void TimelineWidget::setDurationMs(qint64 durationMs)
@@ -31,7 +28,12 @@ void TimelineWidget::setDurationMs(qint64 durationMs)
   durationMs_ = std::max<qint64>(0, durationMs);
   positionMs_ = clampedPosition(positionMs_);
   dragPositionMs_ = clampedPosition(dragPositionMs_);
+  rangeStartMs_ = clampedPosition(rangeStartMs_);
+  rangeEndMs_ = std::clamp<qint64>(rangeEndMs_, rangeStartMs_, durationMs_);
   hoverPositionMs_ = clampedPosition(hoverPositionMs_);
+  if (durationMs_ > 0 && rangeEndMs_ == 0) {
+    rangeEndMs_ = durationMs_;
+  }
   update();
 }
 
@@ -40,7 +42,26 @@ void TimelineWidget::setPositionMs(qint64 positionMs)
   positionMs_ = clampedPosition(positionMs);
   if (!dragging_) {
     dragPositionMs_ = positionMs_;
+    update();
+    return;
   }
+
+  if (dragMode_ != DragMode::Scrub) {
+    update();
+  }
+}
+
+void TimelineWidget::setSelectionRangeMs(qint64 startMs, qint64 endMs)
+{
+  if (durationMs_ <= 0) {
+    rangeStartMs_ = 0;
+    rangeEndMs_ = 0;
+    update();
+    return;
+  }
+
+  rangeStartMs_ = clampedPosition(startMs);
+  rangeEndMs_ = std::clamp<qint64>(endMs, rangeStartMs_, durationMs_);
   update();
 }
 
@@ -57,7 +78,22 @@ qint64 TimelineWidget::durationMs() const
 
 qint64 TimelineWidget::positionMs() const
 {
-  return dragging_ ? dragPositionMs_ : positionMs_;
+  return dragMode_ == DragMode::Scrub ? dragPositionMs_ : positionMs_;
+}
+
+qint64 TimelineWidget::selectionRangeStartMs() const
+{
+  return rangeStartMs_;
+}
+
+qint64 TimelineWidget::selectionRangeEndMs() const
+{
+  return rangeEndMs_;
+}
+
+bool TimelineWidget::isScrubbing() const
+{
+  return dragging_ && dragMode_ == DragMode::Scrub;
 }
 
 void TimelineWidget::paintEvent(QPaintEvent* event)
@@ -85,6 +121,16 @@ void TimelineWidget::paintEvent(QPaintEvent* event)
 
   painter.setClipRect(groove);
   const qint64 currentPositionMs = positionMs();
+  const int rangeStartX = xForPosition(rangeStartMs_);
+  const int rangeEndX = xForPosition(rangeEndMs_);
+  const QRectF selectedRangeRect(
+    rangeStartX,
+    groove.top(),
+    std::max(0, rangeEndX - rangeStartX),
+    groove.height());
+  painter.setBrush(QColor("#1b2d3f"));
+  painter.drawRoundedRect(selectedRangeRect, 7, 7);
+
   const QRectF playedRect(groove.left(), groove.top(), std::max(0, xForPosition(currentPositionMs) - static_cast<int>(groove.left())), groove.height());
   painter.setBrush(QColor("#204b7a"));
   painter.drawRoundedRect(playedRect, 7, 7);
@@ -107,10 +153,22 @@ void TimelineWidget::paintEvent(QPaintEvent* event)
   painter.setPen(Qt::NoPen);
   painter.drawEllipse(QPointF(playheadX, groove.center().y()), 6, 6);
 
+  painter.setBrush(QColor("#8bbdf0"));
+  painter.drawRoundedRect(
+    QRectF(rangeStartX - kHandleWidthPx / 2.0, groove.top() - 8.0, kHandleWidthPx, groove.height() + 16.0),
+    4,
+    4);
+  painter.drawRoundedRect(
+    QRectF(rangeEndX - kHandleWidthPx / 2.0, groove.top() - 8.0, kHandleWidthPx, groove.height() + 16.0),
+    4,
+    4);
+
   painter.setPen(QColor("#e8edf3"));
   painter.drawText(QRectF(16, 10, width() - 32, 16), Qt::AlignLeft | Qt::AlignVCenter, formatTime(currentPositionMs));
 
-  QString timelineHint = QStringLiteral("Duration %1").arg(formatTime(durationMs_));
+  QString timelineHint = QStringLiteral("Range %1 - %2")
+    .arg(formatTime(rangeStartMs_))
+    .arg(formatTime(rangeEndMs_));
   if (fps_ > 0.0) {
     timelineHint.append(QStringLiteral("  |  %1 fps").arg(fps_, 0, 'f', 2));
   }
@@ -132,13 +190,13 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
   switch (event->type()) {
   case QEvent::MouseMove: {
     auto* mouseEvent = static_cast<QMouseEvent*>(event);
-    updateScrub(mapFromGlobal(mouseEvent->globalPosition().toPoint()), false);
+    updateDrag(mapFromGlobal(mouseEvent->globalPosition().toPoint()), false);
     return false;
   }
   case QEvent::MouseButtonRelease: {
     auto* mouseEvent = static_cast<QMouseEvent*>(event);
     if (mouseEvent->button() == Qt::LeftButton) {
-      endScrub(mapFromGlobal(mouseEvent->globalPosition().toPoint()));
+      endDrag(mapFromGlobal(mouseEvent->globalPosition().toPoint()));
     }
     return false;
   }
@@ -154,7 +212,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent* event)
     return;
   }
 
-  beginScrub(event->position().toPoint());
+  beginDrag(event->position().toPoint(), dragModeForPosition(event->position().toPoint()));
   event->accept();
 }
 
@@ -164,7 +222,7 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent* event)
   hovering_ = rect().contains(event->position().toPoint());
 
   if (dragging_) {
-    updateScrub(event->position().toPoint(), false);
+    updateDrag(event->position().toPoint(), false);
     event->accept();
     return;
   }
@@ -180,7 +238,7 @@ void TimelineWidget::mouseReleaseEvent(QMouseEvent* event)
     return;
   }
 
-  endScrub(event->position().toPoint());
+  endDrag(event->position().toPoint());
   event->accept();
 }
 
@@ -191,31 +249,51 @@ void TimelineWidget::leaveEvent(QEvent* event)
   QWidget::leaveEvent(event);
 }
 
-void TimelineWidget::beginScrub(const QPoint& position)
+void TimelineWidget::beginDrag(const QPoint& position, DragMode mode)
 {
   dragging_ = true;
+  dragMode_ = mode;
   qApp->installEventFilter(this);
-  previewClock_.invalidate();
   pendingPreviewMs_ = -1;
   lastDispatchedPreviewMs_ = -1;
-  updateScrub(position, true);
+  updateDrag(position, true);
 }
 
-void TimelineWidget::endScrub(const QPoint& position)
+void TimelineWidget::endDrag(const QPoint& position)
 {
-  updateScrub(position, true);
+  updateDrag(position, true);
   dragging_ = false;
   qApp->removeEventFilter(this);
-  previewTimer_.stop();
   pendingPreviewMs_ = -1;
   lastDispatchedPreviewMs_ = -1;
-  emit scrubFinished(dragPositionMs_);
+  if (dragMode_ == DragMode::Scrub) {
+    emit scrubFinished(dragPositionMs_);
+  } else {
+    emit rangeChangeFinished(rangeStartMs_, rangeEndMs_);
+  }
+  dragMode_ = DragMode::None;
   update();
 }
 
-void TimelineWidget::updateScrub(const QPoint& position, bool forceDispatch)
+void TimelineWidget::updateDrag(const QPoint& position, bool forceDispatch)
 {
-  dragPositionMs_ = positionForX(position.x());
+  const qint64 targetPositionMs = positionForX(position.x());
+
+  if (dragMode_ == DragMode::RangeStart) {
+    rangeStartMs_ = std::min(targetPositionMs, rangeEndMs_);
+    update();
+    emit rangePreviewChanged(rangeStartMs_, rangeEndMs_);
+    return;
+  }
+
+  if (dragMode_ == DragMode::RangeEnd) {
+    rangeEndMs_ = std::max(targetPositionMs, rangeStartMs_);
+    update();
+    emit rangePreviewChanged(rangeStartMs_, rangeEndMs_);
+    return;
+  }
+
+  dragPositionMs_ = targetPositionMs;
   update();
 
   if (forceDispatch) {
@@ -225,13 +303,8 @@ void TimelineWidget::updateScrub(const QPoint& position, bool forceDispatch)
   }
 
   pendingPreviewMs_ = dragPositionMs_;
-  if (!previewClock_.isValid() || previewClock_.elapsed() >= kPreviewSeekIntervalMs) {
+  if (forceDispatch || pendingPreviewMs_ != lastDispatchedPreviewMs_) {
     dispatchPendingPreview();
-    return;
-  }
-
-  if (!previewTimer_.isActive()) {
-    previewTimer_.start(kPreviewSeekIntervalMs - static_cast<int>(previewClock_.elapsed()));
   }
 }
 
@@ -242,7 +315,6 @@ void TimelineWidget::dispatchPendingPreview()
   }
 
   lastDispatchedPreviewMs_ = pendingPreviewMs_;
-  previewClock_.restart();
   emit scrubPreviewRequested(pendingPreviewMs_);
 }
 
@@ -277,6 +349,26 @@ int TimelineWidget::xForPosition(qint64 positionMs) const
 
   const double ratio = static_cast<double>(clampedPosition(positionMs)) / static_cast<double>(durationMs_);
   return static_cast<int>(groove.left() + ratio * groove.width());
+}
+
+TimelineWidget::DragMode TimelineWidget::dragModeForPosition(const QPoint& position) const
+{
+  const QRectF groove = grooveRect();
+  if (!groove.adjusted(-12, -12, 12, 12).contains(position)) {
+    return DragMode::Scrub;
+  }
+
+  const int startX = xForPosition(rangeStartMs_);
+  if (std::abs(position.x() - startX) <= kHandleHitRadiusPx) {
+    return DragMode::RangeStart;
+  }
+
+  const int endX = xForPosition(rangeEndMs_);
+  if (std::abs(position.x() - endX) <= kHandleHitRadiusPx) {
+    return DragMode::RangeEnd;
+  }
+
+  return DragMode::Scrub;
 }
 
 qint64 TimelineWidget::majorTickStepMs() const

@@ -3,7 +3,9 @@
 #include <optional>
 
 #include <QDialog>
+#include <QDragEnterEvent>
 #include <QMainWindow>
+#include <QDropEvent>
 #include <QRectF>
 
 #include "ProjectInfo.hpp"
@@ -33,7 +35,12 @@ class MainWindow final : public QMainWindow {
 public:
   explicit MainWindow(QWidget* parent = nullptr);
 
+protected:
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
+
 private:
+  void loadVideo(const QString& path);
   void beginBackgroundLoad(const QString& path);
   void beginPreviewRender();
   void beginCropSelection();
@@ -44,8 +51,11 @@ private:
   void openVideo();
   void updateMetadata(const ProjectInfo& info);
   void updateTransport(qint64 positionMs, qint64 durationMs);
+  void updateSelectedRange(qint64 startMs, qint64 endMs, bool refreshPreview);
   void refreshSheetPreview();
   void showSheetPreview(const QString& imagePath);
+  void playSelectedRange();
+  void stopSelectedRange();
   void applyDarkPalette();
   void createUi();
   void createMenuBar();
@@ -60,6 +70,7 @@ private:
   QLabel* infoLabel_ = nullptr;
   QLabel* timeLabel_ = nullptr;
   QLabel* frameLabel_ = nullptr;
+  QLabel* rangeLabel_ = nullptr;
   QLabel* cropStatusLabel_ = nullptr;
   QLabel* backendLabel_ = nullptr;
   QLabel* shellLabel_ = nullptr;
@@ -78,5 +89,7 @@ private:
   QString sheetPreviewPath_;
   int loadRequestId_ = 0;
   int previewRequestId_ = 0;
+  qint64 rangeStartMs_ = 0;
+  qint64 rangeEndMs_ = 0;
   std::optional<QRectF> appliedCrop_;
 };
