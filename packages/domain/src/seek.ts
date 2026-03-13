@@ -65,13 +65,13 @@ export const displayFrameNumber = (
   frameCount: number | undefined,
 ): number => clampFrameIndex(frameIndex, frameCount) + 1;
 
-/** Maps a timestamp to the nearest frame position used by the exact-preview path. */
+/** Maps a timestamp to the frame interval that currently contains it. */
 export const frameIndexAtTimeMs = (timeMs: number, fps: number | undefined): number => {
   if (!fps || fps <= 0) {
     return 0;
   }
 
-  return Math.max(0, Math.round((Math.max(timeMs, 0) / 1000) * fps));
+  return Math.max(0, Math.floor((((Math.max(timeMs, 0) + 0.5) / 1000) * fps)));
 };
 
 /** Returns a seek timestamp at the start of the requested frame. */

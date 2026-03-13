@@ -111,7 +111,14 @@ mod tests {
             time_ms: 500,
         };
 
-        assign_auto_tiles(&mut project.tiles, 0, 10_000, 0, 24.0, project.video.frame_count);
+        assign_auto_tiles(
+            &mut project.tiles,
+            0,
+            10_000,
+            0,
+            24.0,
+            project.video.frame_count,
+        );
 
         assert_eq!(
             project.tiles[0].selection,

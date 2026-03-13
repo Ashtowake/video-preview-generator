@@ -31,7 +31,8 @@ describe("seek helpers", () => {
   it("maps times to containing frame indices", () => {
     expect(frameIndexAtTimeMs(0, 30)).toBe(0);
     expect(frameIndexAtTimeMs(33, 30)).toBe(1);
-    expect(frameIndexAtTimeMs(50, 30)).toBe(2);
+    expect(frameIndexAtTimeMs(50, 30)).toBe(1);
+    expect(frameIndexAtTimeMs(67, 30)).toBe(2);
   });
 
   it("targets the start of a frame when seeking by index", () => {

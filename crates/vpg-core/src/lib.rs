@@ -13,9 +13,10 @@ pub use diagnostics::{DiagnosticsBundle, NoticeItem};
 pub use grid::{assign_auto_tiles, validate_grid_spans, GridValidationIssue};
 pub use media::{PreviewFrame, VideoProbe};
 pub use project::{
-    AnalysisMode, BatchSettings, ExportFormat, ExportSettings, GridSettings, PlaybackSettings,
-    ProjectFile, ProjectStyle, ProjectTile, TileSelection, TileSpan, TimeRange, VideoCrop,
-    VideoSource, WatermarkImage, WatermarkSettings, WatermarkText,
+    AnalysisMode, BatchSettings, ExportFormat, ExportSettings, GridSettings, LayoutPresetFile,
+    LayoutPresetTile, PlaybackSettings, ProjectFile, ProjectStyle, ProjectTile, TileSelection,
+    TileSpan, TimeRange, VideoCrop, VideoSource, WatermarkImage, WatermarkSettings,
+    WatermarkText,
 };
 pub use render::{ExportResult, SheetPreview};
 pub use seek::{

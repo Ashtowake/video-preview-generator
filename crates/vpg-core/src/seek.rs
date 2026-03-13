@@ -67,13 +67,13 @@ pub fn display_frame_number(frame_index: u64, frame_count: Option<u64>) -> u64 {
     clamp_frame_index(frame_index, frame_count) + 1
 }
 
-/// Maps a timestamp to the nearest frame position used by the exact-preview path.
+/// Maps a timestamp to the frame interval that currently contains it.
 pub fn frame_index_at_time_ms(time_ms: u64, fps: f64) -> u64 {
     if fps <= 0.0 {
         return 0;
     }
 
-    ((time_ms as f64 / 1000.0) * fps).round().max(0.0) as u64
+    (((time_ms as f64 + 0.5) / 1000.0) * fps).floor().max(0.0) as u64
 }
 
 /// Returns a seek timestamp at the start of the requested frame.
@@ -175,7 +175,8 @@ mod tests {
     fn frame_index_uses_frame_intervals() {
         assert_eq!(frame_index_at_time_ms(0, 30.0), 0);
         assert_eq!(frame_index_at_time_ms(33, 30.0), 1);
-        assert_eq!(frame_index_at_time_ms(50, 30.0), 2);
+        assert_eq!(frame_index_at_time_ms(50, 30.0), 1);
+        assert_eq!(frame_index_at_time_ms(67, 30.0), 2);
     }
 
     #[test]

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QPixmap>
+#include <QTimer>
 #include <QWidget>
 
 /**
@@ -17,19 +19,26 @@ public:
   void setDurationMs(qint64 durationMs);
   void setPositionMs(qint64 positionMs);
   void setSelectionRangeMs(qint64 startMs, qint64 endMs);
+  void setSamplingStartMs(qint64 samplingStartMs);
   void setFramesPerSecond(double fps);
+  void setFilmstrip(const QPixmap& filmstrip, int slotCount, double frameAspectRatio);
+  void setFilmstripLoading(bool loading);
 
   [[nodiscard]] qint64 durationMs() const;
   [[nodiscard]] qint64 positionMs() const;
   [[nodiscard]] qint64 selectionRangeStartMs() const;
   [[nodiscard]] qint64 selectionRangeEndMs() const;
+  [[nodiscard]] qint64 samplingStartMs() const;
   [[nodiscard]] bool isScrubbing() const;
+  [[nodiscard]] QSize filmstripImageSize() const;
 
 signals:
   void scrubPreviewRequested(qint64 positionMs);
   void scrubFinished(qint64 positionMs);
   void rangePreviewChanged(qint64 startMs, qint64 endMs);
   void rangeChangeFinished(qint64 startMs, qint64 endMs);
+  void samplingStartPreviewChanged(qint64 samplingStartMs);
+  void samplingStartChangeFinished(qint64 samplingStartMs);
 
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -45,13 +54,16 @@ private:
     Scrub,
     RangeStart,
     RangeEnd,
+    SamplingStart,
   };
 
   void beginDrag(const QPoint& position, DragMode mode);
   void endDrag(const QPoint& position);
   void updateDrag(const QPoint& position, bool forceDispatch);
   void dispatchPendingPreview();
+  [[nodiscard]] QRectF filmstripRect() const;
   [[nodiscard]] QRectF grooveRect() const;
+  [[nodiscard]] QRect sourceSlotRect(int sourceIndex) const;
   [[nodiscard]] qint64 clampedPosition(qint64 positionMs) const;
   [[nodiscard]] qint64 positionForX(int x) const;
   [[nodiscard]] int xForPosition(qint64 positionMs) const;
@@ -64,6 +76,7 @@ private:
   qint64 dragPositionMs_ = 0;
   qint64 rangeStartMs_ = 0;
   qint64 rangeEndMs_ = 0;
+  qint64 samplingStartMs_ = 0;
   qint64 pendingPreviewMs_ = -1;
   qint64 lastDispatchedPreviewMs_ = -1;
   double fps_ = 0.0;
@@ -71,4 +84,10 @@ private:
   bool hovering_ = false;
   qint64 hoverPositionMs_ = 0;
   DragMode dragMode_ = DragMode::None;
+  QPixmap filmstrip_;
+  int filmstripSlotCount_ = 0;
+  double filmstripFrameAspectRatio_ = 16.0 / 9.0;
+  bool filmstripLoading_ = false;
+  int loadingPhase_ = 0;
+  QTimer loadingTimer_;
 };

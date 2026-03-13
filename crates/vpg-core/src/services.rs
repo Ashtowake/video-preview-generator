@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::media::{create_project_from_probe, find_sharpest_neighbours, preview_frame};
 use crate::project::ProjectFile;
-use crate::render::{export_sheet, render_preview, ExportResult, SheetPreview};
+use crate::render::{
+    export_sheet, render_preview, render_timeline_strip, ExportResult, SheetPreview,
+    TimelineStripPreview,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -112,5 +115,16 @@ impl MediaService {
         max_width: Option<u32>,
     ) -> Result<SheetPreview> {
         render_preview(project, max_width)
+    }
+
+    /// Renders a cached thumbnail strip for the native timeline.
+    pub fn render_timeline_strip(
+        &self,
+        project: &ProjectFile,
+        thumbnail_count: u32,
+        canvas_width: u32,
+        canvas_height: u32,
+    ) -> Result<TimelineStripPreview> {
+        render_timeline_strip(project, thumbnail_count, canvas_width, canvas_height)
     }
 }

@@ -3,16 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "license": "GPL-3.0-or-later",
+  "packageManager": "pnpm@10.32.0",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
     "build": "pnpm -r --if-present run build",
-    "build:native": "cmake --build build/native-shell -j4",
+    "build:native": "cmake --build build/native-shell --parallel 4",
     "build:notices": "node scripts/generate-third-party-notices.mjs",
     "dev:desktop": "pnpm --filter @video-preview/desktop run tauri:dev",
-    "dev:native": "cmake -S apps/native-shell -B build/native-shell -DCMAKE_BUILD_TYPE=Debug && cmake --build build/native-shell -j4 && build/native-shell/video-preview-native",
+    "dev:native": "cmake -S apps/native-shell -B build/native-shell -DCMAKE_BUILD_TYPE=Debug && cmake --build build/native-shell --parallel 4 && node scripts/run-native-shell.mjs",
     "docs:api": "pnpm docs:api:rust && pnpm docs:api:ts",
     "docs:api:rust": "cargo doc --no-deps -p vpg-core -p vpg-cli",
     "docs:api:ts": "typedoc --options typedoc.json",

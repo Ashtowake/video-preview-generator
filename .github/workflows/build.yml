@@ -11,14 +11,13 @@ jobs:
   javascript:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.0
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Domain tests
@@ -37,7 +36,7 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
@@ -51,3 +50,53 @@ jobs:
         run: cargo check -p video-preview-desktop
       - name: Generate Rust API docs
         run: cargo doc --no-deps -p vpg-core -p vpg-cli
+
+  native-windows:
+    runs-on: windows-latest
+    env:
+      LIBMPV_WINDOWS_TAG: 20260307
+      VCPKG_ROOT: ${{ runner.temp }}\\vcpkg
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Clone vcpkg
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: & "$env:VCPKG_ROOT\\bootstrap-vcpkg.bat" -disableMetrics
+      - name: Install Windows native-shell dependencies
+        shell: pwsh
+        run: & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows
+      - name: Test core crate
+        shell: pwsh
+        run: cargo test -p vpg-core
+      - name: Build Windows native shell
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%RUNNER_TEMP%\libmpv" -ReleaseTag %LIBMPV_WINDOWS_TAG%
+          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%RUNNER_TEMP%\libmpv"
+          cmake --build build/native-shell-win --config Debug --parallel 4
+      - name: Deploy Windows native runtime bundle
+        shell: cmd
+        run: |
+          cmake --build build/native-shell-win --target deploy-video-preview-native --config Debug
+      - name: Archive Windows native runtime bundle
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path $PWD "build/native-shell-win/Debug"
+          $artifactRoot = Join-Path $PWD "build/windows-artifact"
+          New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+          $zipPath = Join-Path $artifactRoot "video-preview-native-windows-x64.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $zipPath
+      - name: Upload Windows native runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: video-preview-native-windows-x64
+          path: build/windows-artifact/video-preview-native-windows-x64.zip
+          if-no-files-found: error

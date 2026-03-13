@@ -482,7 +482,8 @@ fn clamp_seek_time_ms(project: &ProjectFile, time_ms: u64) -> u64 {
     time_ms.min(latest_seek_time_ms(project))
 }
 
-fn latest_seek_time_ms(project: &ProjectFile) -> u64 {
+/// Returns the latest safe presentation timestamp that still resolves to a decodable frame.
+pub fn latest_seek_time_ms(project: &ProjectFile) -> u64 {
     let duration_ms = project.video.duration_ms.unwrap_or_default();
     if duration_ms == 0 {
         return 0;

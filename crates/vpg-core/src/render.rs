@@ -11,7 +11,8 @@ use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::media::{
-    apply_project_crop, effective_tile_time_ms, extract_frame_image, normalized_crop_bounds,
+    apply_project_crop, effective_tile_time_ms, extract_frame_image, latest_seek_time_ms,
+    normalized_crop_bounds,
 };
 use crate::project::{ExportFormat, ProjectFile, TileSelection};
 use crate::seek::display_frame_number;
@@ -27,6 +28,15 @@ pub struct ExportResult {
 #[serde(rename_all = "camelCase")]
 /// Downscaled preview of the rendered contact sheet used by the desktop editor.
 pub struct SheetPreview {
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+/// Cached PNG strip shown along the native timeline to give scrub context.
+pub struct TimelineStripPreview {
     pub data_url: String,
     pub width: u32,
     pub height: u32,
@@ -69,15 +79,88 @@ pub fn render_preview(project: &ProjectFile, max_width: Option<u32>) -> Result<S
         rendered
     };
 
-    let mut bytes = Vec::new();
-    preview
-        .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
-        .context("failed to encode sheet preview as PNG")?;
+    let data_url = encode_png_data_url(&preview, "failed to encode sheet preview as PNG")?;
 
     Ok(SheetPreview {
-        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
+        data_url,
         width: preview.width(),
         height: preview.height(),
+    })
+}
+
+/// Renders a horizontal filmstrip of evenly sampled thumbnails across the current video.
+pub fn render_timeline_strip(
+    project: &ProjectFile,
+    thumbnail_count: u32,
+    _canvas_width: u32,
+    canvas_height: u32,
+) -> Result<TimelineStripPreview> {
+    let count = thumbnail_count.clamp(1, 120);
+    let canvas_height = canvas_height.clamp(24, 160);
+    let aspect_ratio = source_aspect_ratio(project);
+    let thumb_width = ((canvas_height as f32) * aspect_ratio).round().max(24.0) as u32;
+    let canvas_width = thumb_width * count;
+    let mut canvas = RgbaImage::from_pixel(canvas_width, canvas_height, Rgba([11, 16, 22, 255]));
+    let latest_seek_ms = latest_seek_time_ms(project);
+    let path = Path::new(&project.video.path);
+    let mut success_count = 0_u32;
+    let mut first_error = None;
+
+    for index in 0..count {
+        let time_ms = if count == 1 {
+            latest_seek_ms / 2
+        } else {
+            ((latest_seek_ms as f64) * (index as f64) / ((count - 1) as f64)).round() as u64
+        };
+        let slot_x = index * thumb_width;
+
+        match extract_frame_image(path, time_ms, Some(thumb_width.max(1)), true) {
+            Ok(frame) => {
+                let frame = apply_project_crop(project, &frame);
+                let resized = resize(
+                    &frame.to_rgba8(),
+                    thumb_width,
+                    canvas_height,
+                    FilterType::Lanczos3,
+                );
+                overlay(&mut canvas, &resized, i64::from(slot_x), 0);
+                success_count += 1;
+            }
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+                draw_filled_rect(
+                    &mut canvas,
+                    slot_x,
+                    0,
+                    thumb_width,
+                    canvas_height,
+                    Rgba([18, 24, 31, 255]),
+                );
+                draw_text(
+                    &mut canvas,
+                    slot_x + 8,
+                    canvas_height.saturating_sub(18),
+                    "ERR",
+                    Rgba([138, 161, 179, 255]),
+                    1,
+                );
+            }
+        }
+    }
+
+    if success_count == 0 {
+        return Err(first_error.unwrap_or_else(|| anyhow!("failed to render timeline strip")));
+    }
+
+    let image = DynamicImage::ImageRgba8(canvas);
+    let data_url = encode_png_data_url(&image, "failed to encode timeline strip as PNG")?;
+
+    Ok(TimelineStripPreview {
+        data_url,
+        width: image.width(),
+        height: image.height(),
     })
 }
 
@@ -263,6 +346,17 @@ fn resolve_output_path(project: &ProjectFile, output_override: Option<&str>) -> 
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(output_name))
+}
+
+fn encode_png_data_url(image: &DynamicImage, context_message: &str) -> Result<String> {
+    let mut bytes = Vec::new();
+    image
+        .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
+        .context(context_message.to_string())?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        BASE64_STANDARD.encode(bytes)
+    ))
 }
 
 fn source_aspect_ratio(project: &ProjectFile) -> f32 {

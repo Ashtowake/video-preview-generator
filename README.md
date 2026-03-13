@@ -22,6 +22,8 @@ This repository now contains:
 
 - A typed project model in Rust and TypeScript
 - A native Qt/libmpv transport shell under `apps/native-shell`
+- A native `Review` workspace with source bin, transport, interactive sheet preview, and batch queue
+- A native `Layouts` workspace for reusable sheet presets stored as `.vpg-layout.json`
 - Ship-ready application shell sections such as About, Credits, Help, Diagnostics, and Third-Party Notices
 - A Rust CLI with working `inspect` and `export` commands backed by the Rust core
 - FFmpeg/ffprobe-backed video probing, frame extraction, and contact-sheet rendering in `vpg-core`
@@ -29,7 +31,7 @@ This repository now contains:
 - Sharpness-neighbour analysis for selected manual tiles in the desktop editor
 - Documentation and CI scaffolding for the new workspace
 
-Still pending for later milestones: native sheet-canvas editing on top of the Rust renderer, a direct Rust/native bridge instead of the current CLI bridge in the Qt shell, disk-backed decode caches, packaged FFmpeg sidecars for releases, richer batch execution, and updater/signing release work.
+Still pending for later milestones: deeper native sheet-canvas editing, a direct Rust/native bridge instead of the current CLI bridge in the Qt shell, disk-backed decode caches, packaged FFmpeg sidecars for releases, richer batch execution, and updater/signing release work.
 
 ## Quick Start
 
@@ -53,11 +55,11 @@ cargo run -p vpg-cli -- export ./example.vpg.json --out ./example.png
 
 ### Native desktop shell
 
-Configure and build the native Qt shell:
+Linux build:
 
 ```bash
 cmake -S apps/native-shell -B build/native-shell -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/native-shell -j4
+cmake --build build/native-shell --parallel 4
 ```
 
 Then launch it with:
@@ -66,13 +68,30 @@ Then launch it with:
 ./build/native-shell/video-preview-native
 ```
 
-Or use the helper script:
+Windows build:
+
+Open an `x64 Native Tools Command Prompt for VS 2022` or `Developer PowerShell for VS 2022`, then:
+
+```powershell
+git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+& "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+& "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\prepare-libmpv.ps1 -Destination "$PWD\build\windows-libmpv" -ReleaseTag 20260307
+cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="$PWD\build\windows-libmpv"
+cmake --build build/native-shell-win --config Debug --parallel 4
+cmake --build build/native-shell-win --target deploy-video-preview-native --config Debug
+.\build\native-shell-win\Debug\video-preview-native.exe
+```
+
+Or use the helper script on Linux/macOS:
 
 ```bash
 pnpm dev:native
 ```
 
 The native shell currently migrates transport first: `libmpv` owns playback, scrubbing, and frame-step responsiveness, while the Rust CLI/core still provide metadata probing and export logic.
+
+For Windows-specific setup notes and troubleshooting, see [`docs/native-shell.md`](./docs/native-shell.md).
 
 ## Documentation
 

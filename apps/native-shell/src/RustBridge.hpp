@@ -3,6 +3,7 @@
 #include <optional>
 
 #include <QObject>
+#include <QJsonObject>
 #include <QRectF>
 
 #include "ProjectInfo.hpp"
@@ -26,7 +27,27 @@ public:
     int maxWidth = 1200,
     const std::optional<QRectF>& crop = std::nullopt,
     std::optional<qint64> rangeStartMs = std::nullopt,
-    std::optional<qint64> rangeEndMs = std::nullopt) const;
+    std::optional<qint64> rangeEndMs = std::nullopt,
+    std::optional<qint64> samplingStartMs = std::nullopt) const;
+  [[nodiscard]] QString renderTimelineStrip(
+    const QString& videoPath,
+    QString* errorMessage = nullptr,
+    int thumbnailCount = 48,
+    int targetWidth = 3456,
+    int targetHeight = 84,
+    const std::optional<QRectF>& crop = std::nullopt) const;
+  [[nodiscard]] QString renderProjectPreview(
+    const QJsonObject& project,
+    QString* errorMessage = nullptr,
+    int maxWidth = 1200) const;
+  [[nodiscard]] QJsonObject findSharpestNeighbours(
+    const QJsonObject& project,
+    const QStringList& tileIds,
+    QString* errorMessage = nullptr) const;
+  [[nodiscard]] QString exportProject(
+    const QJsonObject& project,
+    const QString& outputPath,
+    QString* errorMessage = nullptr) const;
   [[nodiscard]] QString cliPath() const;
 
 private:
