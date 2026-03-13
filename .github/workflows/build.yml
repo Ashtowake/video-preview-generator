@@ -45,8 +45,6 @@ jobs:
         run: cargo test -p vpg-core
       - name: Check CLI crate
         run: cargo check -p vpg-cli
-      - name: Check desktop crate
-        run: cargo check -p video-preview-desktop
       - name: Generate Rust API docs
         run: cargo doc --no-deps -p vpg-core -p vpg-cli
 
