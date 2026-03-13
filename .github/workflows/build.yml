@@ -6,9 +6,20 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Run only the native Windows job
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   javascript:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -33,6 +44,7 @@ jobs:
         run: node scripts/generate-third-party-notices.mjs
 
   rust:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -58,7 +70,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Restore vcpkg caches
-        uses: actions/cache@v5
+        id: restore-vcpkg-cache
+        uses: actions/cache/restore@v5
         with:
           path: |
             .cache/vcpkg/archives
@@ -67,8 +80,8 @@ jobs:
           restore-keys: |
             native-windows-vcpkg-
       - name: Restore libmpv bundle
-        id: cache-libmpv
-        uses: actions/cache@v5
+        id: restore-libmpv-cache
+        uses: actions/cache/restore@v5
         with:
           path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
           key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
@@ -89,16 +102,30 @@ jobs:
         shell: pwsh
         run: |
           & "$env:RUNNER_TEMP\\vcpkg\\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
+      - name: Save vcpkg caches
+        if: ${{ always() && steps.restore-vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .cache/vcpkg/archives
+            .cache/vcpkg/downloads
+          key: native-windows-vcpkg-${{ hashFiles('vcpkg.json', 'apps/native-shell/CMakeLists.txt') }}
       - name: Test core crate
         shell: pwsh
         run: cargo test -p vpg-core
       - name: Prepare libmpv bundle
-        if: steps.cache-libmpv.outputs.cache-hit != 'true'
+        if: steps.restore-libmpv-cache.outputs.cache-hit != 'true'
         shell: cmd
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%" -ReleaseTag %LIBMPV_WINDOWS_TAG%
+      - name: Save libmpv bundle
+        if: ${{ always() && steps.restore-libmpv-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
+          key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
       - name: Build Windows native shell
         shell: cmd
         run: |
