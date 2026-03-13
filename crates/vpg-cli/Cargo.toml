@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 base64 = "0.22.1"
 clap.workspace = true
+image = { version = "0.25.8", default-features = false, features = ["bmp", "png"] }
 serde_json.workspace = true
 vpg-core = { path = "../vpg-core" }
 

@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use clap::{Parser, Subcommand};
+use image::{ImageFormat, ImageReader};
 use vpg_core::{
     assign_auto_tiles, validate_project, DiagnosticsBundle, MediaService, ProjectFile,
     ValidationLevel,
@@ -391,6 +392,22 @@ fn write_png_data_url(data_url: &str, out: &PathBuf, invalid_prefix_message: &st
     let bytes = BASE64_STANDARD
         .decode(encoded)
         .context("failed to decode preview PNG bytes")?;
+    let extension = out
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_else(|| String::from("png"));
 
-    fs::write(out, bytes).with_context(|| format!("failed to write preview to {}", out.display()))
+    match extension.as_str() {
+        "bmp" => {
+            let image = ImageReader::with_format(std::io::Cursor::new(bytes), ImageFormat::Png)
+                .decode()
+                .context("failed to decode preview PNG for BMP export")?;
+            image
+                .save_with_format(out, ImageFormat::Bmp)
+                .with_context(|| format!("failed to write BMP preview to {}", out.display()))
+        }
+        _ => fs::write(out, bytes)
+            .with_context(|| format!("failed to write preview to {}", out.display())),
+    }
 }

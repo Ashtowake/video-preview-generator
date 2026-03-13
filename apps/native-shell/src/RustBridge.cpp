@@ -254,7 +254,7 @@ QString RustBridge::renderStarterPreview(
     + rangeCacheFragment
     + '|'
     + sampleStartCacheFragment;
-  const QString previewFileName = QStringLiteral("starter-preview-%1.png")
+  const QString previewFileName = QStringLiteral("starter-preview-%1.bmp")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString previewPath = cacheDir.filePath(previewFileName);
   if (isReadableImageFile(previewPath)) {
@@ -375,7 +375,7 @@ QString RustBridge::renderTimelineStrip(
     + QByteArray::number(targetHeight)
     + '|'
     + cropCacheFragment;
-  const QString stripFileName = QStringLiteral("timeline-strip-%1.png")
+  const QString stripFileName = QStringLiteral("timeline-strip-%1.bmp")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString stripPath = cacheDir.filePath(stripFileName);
   if (isReadableImageFile(stripPath)) {
@@ -455,7 +455,7 @@ QString RustBridge::renderProjectPreview(
   }
 
   const QByteArray cacheKey = QFileInfo(projectPath).fileName().toUtf8() + '|' + QByteArray::number(maxWidth);
-  const QString previewPath = QDir(cacheDirPath).filePath(QStringLiteral("project-preview-%1.png")
+  const QString previewPath = QDir(cacheDirPath).filePath(QStringLiteral("project-preview-%1.bmp")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex())));
   if (isReadableImageFile(previewPath)) {
     return previewPath;
