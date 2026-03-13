@@ -73,15 +73,10 @@ Windows build:
 Open an `x64 Native Tools Command Prompt for VS 2022` or `Developer PowerShell for VS 2022`, then:
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
-& "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
-& "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\prepare-libmpv.ps1 -Destination "$PWD\build\windows-libmpv" -ReleaseTag 20260307
-cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="$PWD\build\windows-libmpv"
-cmake --build build/native-shell-win --config Debug --parallel 4
-cmake --build build/native-shell-win --target deploy-video-preview-native --config Debug
-.\build\native-shell-win\Debug\video-preview-native.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\setup-native-shell.ps1 -Run
 ```
+
+The script bootstraps `vcpkg`, installs Qt dependencies, prepares `libmpv`, builds the native shell, deploys the runtime files, and optionally launches the app.
 
 Or use the helper script on Linux/macOS:
 
