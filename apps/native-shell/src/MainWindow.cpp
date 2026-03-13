@@ -26,6 +26,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QEvent>
 #include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -75,6 +76,27 @@ QString normalizePath(const QString& path)
 {
   const QFileInfo info(path);
   return info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
+}
+
+QStringList localFilePathsFromMimeData(const QMimeData* mimeData)
+{
+  if (!mimeData || !mimeData->hasUrls()) {
+    return {};
+  }
+
+  QStringList paths;
+  for (const QUrl& url : mimeData->urls()) {
+    if (!url.isLocalFile()) {
+      continue;
+    }
+
+    const QString path = url.toLocalFile();
+    if (!path.isEmpty()) {
+      paths.append(path);
+    }
+  }
+
+  return paths;
 }
 
 double effectivePreviewAspectRatio(const ProjectInfo& info, const std::optional<QRectF>& crop)
@@ -160,19 +182,40 @@ MainWindow::MainWindow(QWidget* parent)
   statusBar()->showMessage("Native shell ready");
 }
 
-void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
-  if (!event->mimeData()->hasUrls()) {
-    event->ignore();
-    return;
+  Q_UNUSED(watched);
+
+  switch (event->type()) {
+    case QEvent::DragEnter:
+    case QEvent::DragMove: {
+      auto* dragEvent = static_cast<QDragMoveEvent*>(event);
+      if (!localFilePathsFromMimeData(dragEvent->mimeData()).isEmpty()) {
+        dragEvent->acceptProposedAction();
+        return true;
+      }
+      break;
+    }
+    case QEvent::Drop: {
+      auto* dropEvent = static_cast<QDropEvent*>(event);
+      const QStringList paths = localFilePathsFromMimeData(dropEvent->mimeData());
+      if (!paths.isEmpty()) {
+        addSources(paths, true);
+        dropEvent->acceptProposedAction();
+        return true;
+      }
+      break;
+    }
+    default:
+      break;
   }
 
-  const QList<QUrl> urls = event->mimeData()->urls();
-  const bool hasLocalFile = std::any_of(urls.begin(), urls.end(), [](const QUrl& url) {
-    return url.isLocalFile();
-  });
+  return QMainWindow::eventFilter(watched, event);
+}
 
-  if (!hasLocalFile) {
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+  if (localFilePathsFromMimeData(event->mimeData()).isEmpty()) {
     event->ignore();
     return;
   }
@@ -182,21 +225,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 
 void MainWindow::dropEvent(QDropEvent* event)
 {
-  if (!event->mimeData()->hasUrls()) {
-    event->ignore();
-    return;
-  }
-
-  QStringList paths;
-  for (const QUrl& url : event->mimeData()->urls()) {
-    if (url.isLocalFile()) {
-      const QString path = url.toLocalFile();
-      if (!path.isEmpty()) {
-        paths.append(path);
-      }
-    }
-  }
-
+  const QStringList paths = localFilePathsFromMimeData(event->mimeData());
   if (paths.isEmpty()) {
     event->ignore();
     return;
@@ -1616,10 +1645,12 @@ void MainWindow::createUi()
   outerLayout->setSpacing(10);
 
   workspaceTabs_ = new QTabWidget(central);
+  workspaceTabs_->setAcceptDrops(true);
   outerLayout->addWidget(workspaceTabs_, 1);
   setCentralWidget(central);
 
   auto* reviewTab = new QWidget(workspaceTabs_);
+  reviewTab->setAcceptDrops(true);
   auto* reviewOuter = new QVBoxLayout(reviewTab);
   reviewOuter->setContentsMargins(0, 0, 0, 0);
   reviewOuter->setSpacing(10);
@@ -1630,6 +1661,7 @@ void MainWindow::createUi()
   workspaceTabs_->addTab(reviewTab, "Review");
 
   sourceBinPanel_ = new QWidget(reviewRootSplitter_);
+  sourceBinPanel_->setAcceptDrops(true);
   auto* sourceBinLayout = new QVBoxLayout(sourceBinPanel_);
   sourceBinLayout->setContentsMargins(0, 0, 0, 0);
   sourceBinLayout->setSpacing(8);
@@ -1655,6 +1687,7 @@ void MainWindow::createUi()
   sourceBinLayout->addLayout(sourceButtons);
 
   sourceTree_ = new QTreeWidget(sourceBinPanel_);
+  sourceTree_->setAcceptDrops(true);
   sourceTree_->setColumnCount(3);
   sourceTree_->setHeaderLabels({ "Source", "Status", "Layout" });
   sourceTree_->setRootIsDecorated(false);
@@ -1674,6 +1707,7 @@ void MainWindow::createUi()
   reviewContentSplitter_->setChildrenCollapsible(false);
 
   auto* transportPane = new QWidget(reviewContentSplitter_);
+  transportPane->setAcceptDrops(true);
   auto* transportLayout = new QVBoxLayout(transportPane);
   transportLayout->setContentsMargins(0, 0, 0, 0);
   transportLayout->setSpacing(10);
@@ -1693,6 +1727,7 @@ void MainWindow::createUi()
   transportLayout->addLayout(headerRow);
 
   auto* playerHost = new QWidget(transportPane);
+  playerHost->setAcceptDrops(true);
   playerHost->setMinimumHeight(360);
   playerHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   auto* playerStack = new QStackedLayout(playerHost);
@@ -1700,7 +1735,9 @@ void MainWindow::createUi()
   playerStack->setStackingMode(QStackedLayout::StackAll);
 
   mpvWidget_ = new MpvWidget(playerHost);
+  mpvWidget_->setAcceptDrops(true);
   cropOverlay_ = new CropOverlayWidget(playerHost);
+  cropOverlay_->setAcceptDrops(true);
   playerStack->addWidget(mpvWidget_);
   playerStack->addWidget(cropOverlay_);
   transportLayout->addWidget(playerHost, 1);
@@ -1730,6 +1767,7 @@ void MainWindow::createUi()
   transportLayout->addLayout(controlsRow);
 
   timelineWidget_ = new TimelineWidget(transportPane);
+  timelineWidget_->setAcceptDrops(true);
   transportLayout->addWidget(timelineWidget_);
 
   auto* metaRow = new QHBoxLayout;
@@ -1804,6 +1842,7 @@ void MainWindow::createUi()
   auto* sheetBox = new QGroupBox("Interactive Sheet", sheetPane);
   auto* sheetBoxLayout = new QVBoxLayout(sheetBox);
   reviewSheetWidget_ = new InteractiveSheetWidget(sheetBox);
+  reviewSheetWidget_->setAcceptDrops(true);
   sheetBoxLayout->addWidget(reviewSheetWidget_, 1);
   sheetLayout->addWidget(sheetBox, 1);
 
@@ -1872,6 +1911,18 @@ void MainWindow::createUi()
   layoutsOuter->setContentsMargins(0, 0, 0, 0);
   layoutsOuter->setSpacing(10);
   workspaceTabs_->addTab(layoutsTab, "Layouts");
+  central->setAcceptDrops(true);
+  central->installEventFilter(this);
+  workspaceTabs_->installEventFilter(this);
+  reviewTab->installEventFilter(this);
+  sourceBinPanel_->installEventFilter(this);
+  sourceTree_->installEventFilter(this);
+  transportPane->installEventFilter(this);
+  playerHost->installEventFilter(this);
+  mpvWidget_->installEventFilter(this);
+  cropOverlay_->installEventFilter(this);
+  timelineWidget_->installEventFilter(this);
+  reviewSheetWidget_->installEventFilter(this);
 
   auto* presetsPane = new QWidget(layoutsTab);
   presetsPane->setMinimumWidth(260);

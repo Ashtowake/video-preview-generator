@@ -99,6 +99,7 @@ public:
   explicit MainWindow(QWidget* parent = nullptr);
 
 protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
   void closeEvent(QCloseEvent* event) override;

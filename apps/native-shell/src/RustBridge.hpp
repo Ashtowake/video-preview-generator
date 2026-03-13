@@ -52,5 +52,6 @@ public:
 
 private:
   [[nodiscard]] QString repoRoot() const;
+  [[nodiscard]] QString workingDirectory() const;
   [[nodiscard]] QStringList cliInvocation(const QString& command, const QStringList& arguments) const;
 };

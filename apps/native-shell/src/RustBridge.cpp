@@ -41,7 +41,8 @@ bool runCliProcess(
   process.start(program, arguments);
   if (!process.waitForStarted()) {
     if (errorMessage) {
-      *errorMessage = QStringLiteral("Failed to launch Rust CLI: %1").arg(program);
+      *errorMessage = QStringLiteral("Failed to launch Rust CLI: %1 (%2)")
+        .arg(program, process.errorString());
     }
     return false;
   }
@@ -144,7 +145,7 @@ RustBridge::RustBridge(QObject* parent)
 ProjectInfo RustBridge::inspectVideo(const QString& videoPath, QString* errorMessage) const
 {
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
 
   const QStringList invocation = cliInvocation("inspect", { videoPath });
   if (invocation.isEmpty()) {
@@ -249,7 +250,7 @@ QString RustBridge::renderStarterPreview(
   }
 
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
 
   QStringList previewArguments{
     videoPath,
@@ -392,7 +393,7 @@ QString RustBridge::renderTimelineStrip(
   }
 
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
 
   const QStringList invocation = cliInvocation("timeline-strip", stripArguments);
   if (invocation.isEmpty()) {
@@ -445,7 +446,7 @@ QString RustBridge::renderProjectPreview(
   }
 
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
   const QStringList invocation = cliInvocation(
     "preview-project",
     {
@@ -505,7 +506,7 @@ QJsonObject RustBridge::findSharpestNeighbours(
   }
 
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
   const QStringList invocation = cliInvocation("sharpest", arguments);
   if (invocation.isEmpty()) {
     if (errorMessage) {
@@ -541,7 +542,7 @@ QString RustBridge::exportProject(
   }
 
   QProcess process;
-  process.setWorkingDirectory(repoRoot());
+  process.setWorkingDirectory(workingDirectory());
   const QStringList invocation = cliInvocation("export", { projectPath, "--out", outputPath });
   if (invocation.isEmpty()) {
     if (errorMessage) {
@@ -591,6 +592,16 @@ QString RustBridge::cliPath() const
 QString RustBridge::repoRoot() const
 {
   return QStringLiteral(VPG_REPO_ROOT);
+}
+
+QString RustBridge::workingDirectory() const
+{
+  const QString compiledRepoRoot = repoRoot();
+  if (!compiledRepoRoot.isEmpty() && QDir(compiledRepoRoot).exists()) {
+    return compiledRepoRoot;
+  }
+
+  return QCoreApplication::applicationDirPath();
 }
 
 QStringList RustBridge::cliInvocation(const QString& command, const QStringList& arguments) const
