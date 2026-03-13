@@ -132,15 +132,15 @@ jobs:
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
           cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_DIR="%GITHUB_WORKSPACE%" -DLIBMPV_DIR="%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%"
-          cmake --build build/native-shell-win --config Debug --parallel 4
+          cmake --build build/native-shell-win --config Release --parallel 4
       - name: Deploy Windows native runtime bundle
         shell: cmd
         run: |
-          cmake --build build/native-shell-win --target deploy-video-preview-native --config Debug
+          cmake --build build/native-shell-win --target deploy-video-preview-native --config Release
       - name: Archive Windows native runtime bundle
         shell: pwsh
         run: |
-          $bundleRoot = Join-Path $PWD "build/native-shell-win/Debug"
+          $bundleRoot = Join-Path $PWD "build/native-shell-win/Release"
           $artifactRoot = Join-Path $PWD "build/windows-artifact"
           New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
           $zipPath = Join-Path $artifactRoot "video-preview-native-windows-x64.zip"
