@@ -72,6 +72,12 @@ jobs:
         with:
           path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
           key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
+      - name: Prepare Windows cache directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:VCPKG_DOWNLOADS" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\.cache\\libmpv\\$env:LIBMPV_WINDOWS_TAG" -Force | Out-Null
       - name: Clone vcpkg
         shell: pwsh
         run: git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
