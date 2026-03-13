@@ -52,9 +52,26 @@ jobs:
     runs-on: windows-latest
     env:
       LIBMPV_WINDOWS_TAG: 20260307
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.cache\vcpkg\archives
+      VCPKG_DOWNLOADS: ${{ github.workspace }}\.cache\vcpkg\downloads
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      - name: Restore vcpkg caches
+        uses: actions/cache@v5
+        with:
+          path: |
+            .cache/vcpkg/archives
+            .cache/vcpkg/downloads
+          key: native-windows-vcpkg-${{ hashFiles('vcpkg.json', 'apps/native-shell/CMakeLists.txt') }}
+          restore-keys: |
+            native-windows-vcpkg-
+      - name: Restore libmpv bundle
+        id: cache-libmpv
+        uses: actions/cache@v5
+        with:
+          path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
+          key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
       - name: Clone vcpkg
         shell: pwsh
         run: git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
@@ -69,13 +86,19 @@ jobs:
       - name: Test core crate
         shell: pwsh
         run: cargo test -p vpg-core
+      - name: Prepare libmpv bundle
+        if: steps.cache-libmpv.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%" -ReleaseTag %LIBMPV_WINDOWS_TAG%
       - name: Build Windows native shell
         shell: cmd
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%RUNNER_TEMP%\libmpv" -ReleaseTag %LIBMPV_WINDOWS_TAG%
-          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%RUNNER_TEMP%\libmpv"
+          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%"
           cmake --build build/native-shell-win --config Debug --parallel 4
       - name: Deploy Windows native runtime bundle
         shell: cmd
