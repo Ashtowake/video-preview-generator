@@ -98,7 +98,10 @@ fn ensure_video_loaded<R: Runtime>(
         app,
         vec![json!("loadfile"), json!(video_path), json!("replace")],
     )?;
-    run_command(app, vec![json!("set_property"), json!("pause"), json!(true)])?;
+    run_command(
+        app,
+        vec![json!("set_property"), json!("pause"), json!(true)],
+    )?;
     wait_for_settle(app)?;
 
     session.loaded_video_path = Some(video_path.to_string());
@@ -111,7 +114,10 @@ fn seek_exact<R: Runtime>(app: &AppHandle<R>, time_ms: u64) -> Result<()> {
         app,
         vec![json!("seek"), json!(seconds), json!("absolute+exact")],
     )?;
-    run_command(app, vec![json!("set_property"), json!("pause"), json!(true)])?;
+    run_command(
+        app,
+        vec![json!("set_property"), json!("pause"), json!(true)],
+    )?;
     wait_for_settle(app)?;
     Ok(())
 }
@@ -134,7 +140,8 @@ fn capture_current_frame<R: Runtime>(
     })?;
 
     session.screenshot_serial = session.screenshot_serial.wrapping_add(1);
-    let screenshot_path = preview_dir.join(format!("preview-{:016x}.png", session.screenshot_serial));
+    let screenshot_path =
+        preview_dir.join(format!("preview-{:016x}.png", session.screenshot_serial));
 
     run_command(
         app,
@@ -202,18 +209,24 @@ fn current_time_ms<R: Runtime>(app: &AppHandle<R>) -> Result<u64> {
 }
 
 fn get_property_bool<R: Runtime>(app: &AppHandle<R>, property: &str) -> Result<Option<bool>> {
-    Ok(run_command(app, vec![json!("get_property"), json!(property)])?
-        .and_then(|value| value.as_bool()))
+    Ok(
+        run_command(app, vec![json!("get_property"), json!(property)])?
+            .and_then(|value| value.as_bool()),
+    )
 }
 
 fn get_property_f64<R: Runtime>(app: &AppHandle<R>, property: &str) -> Result<Option<f64>> {
-    Ok(run_command(app, vec![json!("get_property"), json!(property)])?
-        .and_then(|value| value.as_f64()))
+    Ok(
+        run_command(app, vec![json!("get_property"), json!(property)])?
+            .and_then(|value| value.as_f64()),
+    )
 }
 
 fn get_property_string<R: Runtime>(app: &AppHandle<R>, property: &str) -> Result<Option<String>> {
-    Ok(run_command(app, vec![json!("get_property"), json!(property)])?
-        .and_then(|value| value.as_str().map(ToOwned::to_owned)))
+    Ok(
+        run_command(app, vec![json!("get_property"), json!(property)])?
+            .and_then(|value| value.as_str().map(ToOwned::to_owned)),
+    )
 }
 
 fn run_command<R: Runtime>(app: &AppHandle<R>, command: Vec<Value>) -> Result<Option<Value>> {

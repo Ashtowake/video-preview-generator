@@ -29,6 +29,7 @@ export const MediaRangePane = () => {
     busy,
     setLoadedVideo,
     loadVideoFromPath,
+    ensurePlaybackReady,
     refreshPreviewFrame,
     setDurationMs,
     setPlayheadMs,
@@ -54,6 +55,7 @@ export const MediaRangePane = () => {
   const isScrubbingRef = useRef(false);
   const scrubbedPlayheadMsRef = useRef(project.playback.playheadMs);
   const pendingPauseMsRef = useRef<number | null>(null);
+  const pendingPlaybackStartRef = useRef(false);
   const frameToleranceMs = Math.max(10, Math.round(500 / fps));
   const previewFrameFresh =
     previewFrame && Math.abs(previewFrame.timeMs - playerPlayheadMs) <= frameToleranceMs
@@ -100,7 +102,23 @@ export const MediaRangePane = () => {
     setIsPlaying(false);
     setPlayerError(null);
     pendingPauseMsRef.current = null;
+    if (!loadedVideoUrl) {
+      pendingPlaybackStartRef.current = false;
+    }
   }, [loadedVideoUrl]);
+
+  useEffect(() => {
+    if (!loadedVideoUrl || !pendingPlaybackStartRef.current || !videoRef.current) {
+      return;
+    }
+
+    pendingPlaybackStartRef.current = false;
+    void videoRef.current.play().catch((error) => {
+      setIsPlaying(false);
+      const reason = error instanceof Error ? ` ${error.message}` : "";
+      setPlayerError(`${copy.media.playerLoadError}${reason}`);
+    });
+  }, [copy.media.playerLoadError, loadedVideoUrl]);
 
   useEffect(() => {
     if (isPlaying || isScrubbingRef.current) {
@@ -139,7 +157,7 @@ export const MediaRangePane = () => {
   ]);
 
   const loaded = hasVideo;
-  const canPlayVideo = Boolean(loadedVideoUrl);
+  const canPlayVideo = hasVideo;
 
   return (
     <section className="panel panel--media">
@@ -225,6 +243,7 @@ export const MediaRangePane = () => {
                   const nextMs = Math.round(event.currentTarget.currentTime * 1000);
                   scrubbedPlayheadMsRef.current = nextMs;
                   setPlayerPlayheadMs(nextMs);
+                  setPlayheadMs(nextMs);
                 }}
                 poster={previewFrameFresh?.dataUrl}
                 preload="metadata"
@@ -259,20 +278,34 @@ export const MediaRangePane = () => {
           <button
             disabled={busy || !canPlayVideo}
             onClick={() => {
-              if (!videoRef.current) {
-                return;
-              }
+              void (async () => {
+                if (!loadedVideoUrl) {
+                  pendingPlaybackStartRef.current = true;
+                  if (playbackPreparing) {
+                    return;
+                  }
+                  const ready = await ensurePlaybackReady();
+                  if (!ready && !playbackPreparing) {
+                    pendingPlaybackStartRef.current = false;
+                  }
+                  return;
+                }
 
-              if (videoRef.current.paused) {
-                void videoRef.current.play().catch((error) => {
-                  setIsPlaying(false);
-                  const reason = error instanceof Error ? ` ${error.message}` : "";
-                  setPlayerError(`${copy.media.playerLoadError}${reason}`);
-                });
-                return;
-              }
+                if (!videoRef.current) {
+                  return;
+                }
 
-              videoRef.current.pause();
+                if (videoRef.current.paused) {
+                  void videoRef.current.play().catch((error) => {
+                    setIsPlaying(false);
+                    const reason = error instanceof Error ? ` ${error.message}` : "";
+                    setPlayerError(`${copy.media.playerLoadError}${reason}`);
+                  });
+                  return;
+                }
+
+                videoRef.current.pause();
+              })();
             }}
             type="button"
           >

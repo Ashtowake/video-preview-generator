@@ -2,6 +2,8 @@
 
 Projects are stored as versioned `.vpg.json` files.
 
+Reusable layouts are stored separately as `.vpg-layout.json` files.
+
 ## Top-Level Fields
 
 - `version`: schema version
@@ -70,3 +72,23 @@ Notes:
 - The project file is language-neutral.
 - New schema versions should be additive when possible.
 - Validation should reject overlapping spans, invalid time ranges, and invalid crop rectangles before export.
+
+## Layout Presets
+
+Layout presets intentionally exclude source-specific state. A `.vpg-layout.json` file contains:
+
+- `version`
+- `name`
+- `grid`
+- `tiles`
+- `style`
+- `watermark`
+- `export`
+
+It must not contain:
+
+- `video`
+- `playback`
+- `range`
+- source-specific crop or frame assignments
+- batch input lists

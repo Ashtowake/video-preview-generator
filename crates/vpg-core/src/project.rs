@@ -65,6 +65,51 @@ impl ProjectFile {
     }
 }
 
+/// Reusable sheet layout and style preset stored separately from source-specific projects.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPresetFile {
+    pub version: u32,
+    pub name: String,
+    pub grid: GridSettings,
+    pub tiles: Vec<LayoutPresetTile>,
+    pub style: ProjectStyle,
+    pub watermark: WatermarkSettings,
+    pub export: ExportSettings,
+}
+
+impl LayoutPresetFile {
+    /// Creates a preset from the reusable, non-source-specific parts of a project file.
+    pub fn from_project(project: &ProjectFile, name: impl Into<String>) -> Self {
+        Self {
+            version: 1,
+            name: name.into(),
+            grid: project.grid.clone(),
+            tiles: project
+                .tiles
+                .iter()
+                .map(|tile| LayoutPresetTile {
+                    id: tile.id.clone(),
+                    order: tile.order,
+                    span: tile.span.clone(),
+                })
+                .collect(),
+            style: project.style.clone(),
+            watermark: project.watermark.clone(),
+            export: project.export.clone(),
+        }
+    }
+}
+
+/// Reusable tile layout entry stored inside a layout preset.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPresetTile {
+    pub id: String,
+    pub order: u32,
+    pub span: TileSpan,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Decode depth selected for the current project.
@@ -311,7 +356,7 @@ pub struct BatchSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProjectFile, TileSelection, VideoCrop, VideoSource};
+    use super::{LayoutPresetFile, ProjectFile, TileSelection, VideoCrop, VideoSource};
 
     #[test]
     fn starter_project_places_tiles_across_the_default_grid() {
@@ -381,6 +426,20 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn layout_preset_serializes_without_source_specific_fields() {
+        let project = ProjectFile::starter("movie.mp4");
+        let preset = LayoutPresetFile::from_project(&project, "Default Grid");
+
+        let value = serde_json::to_value(preset).expect("layout preset should serialize");
+        assert_eq!(value["name"], "Default Grid");
+        assert!(value.get("video").is_none());
+        assert!(value.get("range").is_none());
+        assert!(value.get("playback").is_none());
+        assert!(value.get("batch").is_none());
+        assert_eq!(value["tiles"].as_array().map(Vec::len), Some(20));
     }
 }
 

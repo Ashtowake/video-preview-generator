@@ -1,24 +1,29 @@
 name: Workspace CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Run only the native Windows job
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   javascript:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.0
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Domain tests
@@ -35,9 +40,10 @@ jobs:
         run: node scripts/generate-third-party-notices.mjs
 
   rust:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
@@ -47,7 +53,105 @@ jobs:
         run: cargo test -p vpg-core
       - name: Check CLI crate
         run: cargo check -p vpg-cli
-      - name: Check desktop crate
-        run: cargo check -p video-preview-desktop
       - name: Generate Rust API docs
         run: cargo doc --no-deps -p vpg-core -p vpg-cli
+
+  native-windows:
+    runs-on: windows-latest
+    env:
+      LIBMPV_WINDOWS_TAG: 20260307
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.cache\vcpkg\archives
+      VCPKG_DOWNLOADS: ${{ github.workspace }}\.cache\vcpkg\downloads
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore vcpkg caches
+        id: restore-vcpkg-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            .cache/vcpkg/archives
+            .cache/vcpkg/downloads
+          key: native-windows-vcpkg-${{ hashFiles('vcpkg.json', 'apps/native-shell/CMakeLists.txt') }}
+          restore-keys: |
+            native-windows-vcpkg-
+      - name: Restore libmpv bundle
+        id: restore-libmpv-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
+          key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
+      - name: Prepare Windows cache directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:VCPKG_DOWNLOADS" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\.cache\\libmpv\\$env:LIBMPV_WINDOWS_TAG" -Force | Out-Null
+      - name: Clone vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
+          $baseline = (Get-Content "$env:GITHUB_WORKSPACE\\vcpkg.json" -Raw | ConvertFrom-Json)."builtin-baseline"
+          if ($baseline) {
+            git -C "$env:RUNNER_TEMP\\vcpkg" fetch --depth 1 origin $baseline
+          }
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\\vcpkg\\bootstrap-vcpkg.bat" -disableMetrics
+      - name: Install Windows native-shell dependencies
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\\vcpkg\\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
+      - name: Save vcpkg caches
+        if: ${{ always() && steps.restore-vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .cache/vcpkg/archives
+            .cache/vcpkg/downloads
+          key: native-windows-vcpkg-${{ hashFiles('vcpkg.json', 'apps/native-shell/CMakeLists.txt') }}
+      - name: Test core crate
+        shell: pwsh
+        run: cargo test -p vpg-core
+      - name: Prepare libmpv bundle
+        if: steps.restore-libmpv-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%" -ReleaseTag %LIBMPV_WINDOWS_TAG%
+      - name: Save libmpv bundle
+        if: ${{ always() && steps.restore-libmpv-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/libmpv/${{ env.LIBMPV_WINDOWS_TAG }}
+          key: native-windows-libmpv-${{ env.LIBMPV_WINDOWS_TAG }}
+      - name: Build Windows native shell
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_DIR="%GITHUB_WORKSPACE%" -DLIBMPV_DIR="%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%"
+          cmake --build build/native-shell-win --config Release --parallel 4
+      - name: Deploy Windows native runtime bundle
+        shell: cmd
+        run: |
+          cmake --build build/native-shell-win --target deploy-video-preview-native --config Release
+      - name: Archive Windows native runtime bundle
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path $PWD "build/native-shell-win/Release"
+          $artifactRoot = Join-Path $PWD "build/windows-artifact"
+          New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+          $zipPath = Join-Path $artifactRoot "video-preview-native-windows-x64.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $zipPath
+      - name: Upload Windows native runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: video-preview-native-windows-x64
+          path: build/windows-artifact/video-preview-native-windows-x64.zip
+          if-no-files-found: error

@@ -66,6 +66,7 @@ export interface EditorState {
   busy: boolean;
   setLoadedVideo: (file: File) => void;
   loadVideoFromPath: (path: string) => Promise<void>;
+  ensurePlaybackReady: () => Promise<boolean>;
   setDurationMs: (durationMs: number) => void;
   setPlayheadMs: (playheadMs: number) => void;
   setRangeStart: (startMs: number) => void;
@@ -135,6 +136,29 @@ const replaceManagedVideoUrl = (url: string | null): string | null => {
 
   managedVideoUrl = url?.startsWith("blob:") ? url : null;
   return url;
+};
+
+const resolvePlaybackUrl = async (
+  path: string,
+): Promise<{ url: string; alert: Exclude<EditorAlert, null> }> => {
+  try {
+    const playback = await prepareVideoPlayback(path);
+    return {
+      url: replaceManagedVideoUrl(playbackBlobUrl(playback)) ?? projectFileUrl(path),
+      alert: { tone: "info", message: `Playback ready for ${path}` },
+    };
+  } catch (error) {
+    return {
+      url: replaceManagedVideoUrl(projectFileUrl(path)) ?? projectFileUrl(path),
+      alert: {
+        tone: "warning",
+        message: `${errorMessage(
+          error,
+          "Failed to prepare preview playback.",
+        )} Falling back to direct playback.`,
+      },
+    };
+  }
 };
 
 /** Recomputes derived store fields after any project mutation. */
@@ -274,6 +298,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
   loadVideoFromPath: async (path) => {
+    playbackRequestSequence += 1;
     set({
       busy: true,
       alert: null,
@@ -286,11 +311,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     try {
       const project = inheritImportedProject(get().project, await probeVideo(path));
-      const requestId = playbackRequestSequence + 1;
-      playbackRequestSequence = requestId;
+      const initialVideoUrl = isDesktopRuntime()
+        ? replaceManagedVideoUrl(null)
+        : replaceManagedVideoUrl(path);
+      const requestId = playbackRequestSequence;
       set({
         busy: false,
-        loadedVideoUrl: null,
+        loadedVideoUrl: initialVideoUrl,
         playbackPreparing: isDesktopRuntime(),
         loadedVideoSizeBytes: 0,
         previewFrame: null,
@@ -302,44 +329,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ...syncState(project, get().selectedTileId),
         alert: {
           tone: "info",
-          message: isDesktopRuntime()
-            ? `Loaded ${path}. Preparing preview playback...`
-            : `Loaded ${path}`,
+          message: `Loaded ${path}`,
         },
       });
 
       if (isDesktopRuntime()) {
-        void prepareVideoPlayback(path)
-          .then((playback) => {
-            if (requestId !== playbackRequestSequence) {
-              return;
-            }
+        void resolvePlaybackUrl(path).then(({ url, alert }) => {
+          if (requestId !== playbackRequestSequence) {
+            return;
+          }
 
-            set({
-              loadedVideoUrl: replaceManagedVideoUrl(playbackBlobUrl(playback)),
-              playbackPreparing: false,
-              alert: { tone: "info", message: `Loaded ${path}` },
-            });
-          })
-          .catch((error) => {
-            if (requestId !== playbackRequestSequence) {
-              return;
-            }
-
-            set({
-              loadedVideoUrl: replaceManagedVideoUrl(projectFileUrl(path)),
-              playbackPreparing: false,
-              alert: {
-                tone: "warning",
-                message: `${errorMessage(
-                  error,
-                  "Failed to prepare preview playback.",
-                )} Falling back to direct playback.`,
-              },
-            });
+          set({
+            loadedVideoUrl: url,
+            playbackPreparing: false,
+            alert,
           });
-      } else {
-        set({ loadedVideoUrl: replaceManagedVideoUrl(path), playbackPreparing: false });
+        });
       }
     } catch (error) {
       set({
@@ -351,6 +356,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         },
       });
     }
+  },
+  ensurePlaybackReady: async () => {
+    const { loadedVideoUrl, playbackPreparing, project } = get();
+    if (loadedVideoUrl) {
+      return true;
+    }
+
+    if (!project.video.path || project.video.path === "unloaded-video.mp4") {
+      return false;
+    }
+
+    if (!isDesktopRuntime()) {
+      set({
+        loadedVideoUrl: replaceManagedVideoUrl(project.video.path),
+        playbackPreparing: false,
+      });
+      return true;
+    }
+
+    if (playbackPreparing) {
+      return false;
+    }
+
+    const requestId = playbackRequestSequence + 1;
+    playbackRequestSequence = requestId;
+    set({
+      playbackPreparing: true,
+      alert: { tone: "info", message: `Preparing preview playback for ${project.video.path}...` },
+    });
+
+    const { url, alert } = await resolvePlaybackUrl(project.video.path);
+    if (requestId !== playbackRequestSequence) {
+      return false;
+    }
+
+    set({
+      loadedVideoUrl: url,
+      playbackPreparing: false,
+      alert,
+    });
+    return true;
   },
   setDurationMs: (durationMs) => {
     const previousOffsetMs = sampleStartOffsetMs(get().project);
@@ -760,17 +806,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
   loadProjectFromPath: async (path) => {
+    playbackRequestSequence += 1;
     set({ busy: true, alert: null });
     try {
       const project = await loadProject(path);
       const diagnostics = isDesktopRuntime()
         ? await diagnosticsBundle(project)
         : localDiagnostics(project);
-      const requestId = playbackRequestSequence + 1;
-      playbackRequestSequence = requestId;
+      const initialVideoUrl =
+        isDesktopRuntime() || !project.video.path
+          ? replaceManagedVideoUrl(null)
+          : replaceManagedVideoUrl(project.video.path);
+      const requestId = playbackRequestSequence;
       set({
         busy: false,
-        loadedVideoUrl: null,
+        loadedVideoUrl: initialVideoUrl,
         playbackPreparing: isDesktopRuntime() && Boolean(project.video.path),
         previewFrame: null,
         previewBusy: false,
@@ -782,43 +832,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         diagnostics,
         alert: {
           tone: "info",
-          message:
-            isDesktopRuntime() && project.video.path
-              ? `Loaded project from ${path}. Preparing preview playback...`
-              : `Loaded project from ${path}`,
+          message: `Loaded project from ${path}`,
         },
       });
 
       if (isDesktopRuntime() && project.video.path) {
-        void prepareVideoPlayback(project.video.path)
-          .then((playback) => {
-            if (requestId !== playbackRequestSequence) {
-              return;
-            }
+        void resolvePlaybackUrl(project.video.path).then(({ url, alert }) => {
+          if (requestId !== playbackRequestSequence) {
+            return;
+          }
 
-            set({
-              loadedVideoUrl: replaceManagedVideoUrl(playbackBlobUrl(playback)),
-              playbackPreparing: false,
-              alert: { tone: "info", message: `Loaded project from ${path}` },
-            });
-          })
-          .catch((error) => {
-            if (requestId !== playbackRequestSequence) {
-              return;
-            }
-
-            set({
-              loadedVideoUrl: replaceManagedVideoUrl(projectFileUrl(project.video.path)),
-              playbackPreparing: false,
-              alert: {
-                tone: "warning",
-                message: `${errorMessage(
-                  error,
-                  "Failed to prepare preview playback.",
-                )} Falling back to direct playback.`,
-              },
-            });
+          set({
+            loadedVideoUrl: url,
+            playbackPreparing: false,
+            alert,
           });
+        });
       }
     } catch (error) {
       set({

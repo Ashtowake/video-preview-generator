@@ -154,9 +154,32 @@ void MpvWidget::stepFrames(int direction, int count)
   pollState();
 }
 
+void MpvWidget::setMuted(bool muted)
+{
+  if (!ensureInitialized()) {
+    return;
+  }
+
+  setFlagProperty("mute", muted);
+}
+
+void MpvWidget::setVolume(int volume)
+{
+  if (!ensureInitialized()) {
+    return;
+  }
+
+  setDoubleProperty("volume", qBound(0, volume, 100));
+}
+
 bool MpvWidget::isPaused() const
 {
   return paused_;
+}
+
+bool MpvWidget::isMuted() const
+{
+  return getFlagProperty("mute", true);
 }
 
 bool MpvWidget::hasMedia() const
@@ -172,6 +195,11 @@ qint64 MpvWidget::currentTimeMs() const
 qint64 MpvWidget::durationMs() const
 {
   return durationMs_;
+}
+
+int MpvWidget::volume() const
+{
+  return qRound(getDoubleProperty("volume", 0.0));
 }
 
 void MpvWidget::initializeGL()
@@ -293,6 +321,8 @@ void MpvWidget::initializePlayerCore()
   mpv_set_option_string(mpv_, "input-vo-keyboard", "no");
   mpv_set_option_string(mpv_, "keep-open", "yes");
   mpv_set_option_string(mpv_, "pause", "yes");
+  mpv_set_option_string(mpv_, "mute", "yes");
+  mpv_set_option_string(mpv_, "volume", "0");
   mpv_set_option_string(mpv_, "hwdec", "auto-safe");
   mpv_set_option_string(mpv_, "cache", "yes");
   mpv_set_option_string(mpv_, "demuxer-seekable-cache", "yes");

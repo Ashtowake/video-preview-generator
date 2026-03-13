@@ -30,11 +30,15 @@ public:
   void seekPreviewMs(qint64 positionMs);
   void seekRelativeMs(qint64 deltaMs);
   void stepFrames(int direction, int count);
+  void setMuted(bool muted);
+  void setVolume(int volume);
 
   [[nodiscard]] bool isPaused() const;
+  [[nodiscard]] bool isMuted() const;
   [[nodiscard]] bool hasMedia() const;
   [[nodiscard]] qint64 currentTimeMs() const;
   [[nodiscard]] qint64 durationMs() const;
+  [[nodiscard]] int volume() const;
 
 signals:
   void playbackStateChanged(bool paused);
