@@ -64,10 +64,12 @@ jobs:
         run: git clone --depth 1 https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
       - name: Bootstrap vcpkg
         shell: pwsh
-        run: & "$env:VCPKG_ROOT\\bootstrap-vcpkg.bat" -disableMetrics
+        run: |
+          & "$env:VCPKG_ROOT\\bootstrap-vcpkg.bat" -disableMetrics
       - name: Install Windows native-shell dependencies
         shell: pwsh
-        run: & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows
+        run: |
+          & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows
       - name: Test core crate
         shell: pwsh
         run: cargo test -p vpg-core
