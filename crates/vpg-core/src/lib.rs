@@ -15,8 +15,7 @@ pub use media::{PreviewFrame, VideoProbe};
 pub use project::{
     AnalysisMode, BatchSettings, ExportFormat, ExportSettings, GridSettings, LayoutPresetFile,
     LayoutPresetTile, PlaybackSettings, ProjectFile, ProjectStyle, ProjectTile, TileSelection,
-    TileSpan, TimeRange, VideoCrop, VideoSource, WatermarkImage, WatermarkSettings,
-    WatermarkText,
+    TileSpan, TimeRange, VideoCrop, VideoSource, WatermarkImage, WatermarkSettings, WatermarkText,
 };
 pub use render::{ExportResult, SheetPreview};
 pub use seek::{

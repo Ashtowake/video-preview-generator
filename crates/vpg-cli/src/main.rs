@@ -184,8 +184,13 @@ fn preview(
     let mut project = service.load_video_project(&video.display().to_string())?;
     apply_optional_crop(&mut project, crop_x, crop_y, crop_width, crop_height)?;
     if range_start.is_some() || range_end.is_some() || sample_start.is_some() {
-        let duration_ms = project.video.duration_ms.unwrap_or(project.range.end_ms.max(1));
-        let start_ms = range_start.unwrap_or(project.range.start_ms).min(duration_ms.saturating_sub(1));
+        let duration_ms = project
+            .video
+            .duration_ms
+            .unwrap_or(project.range.end_ms.max(1));
+        let start_ms = range_start
+            .unwrap_or(project.range.start_ms)
+            .min(duration_ms.saturating_sub(1));
         let end_ms = range_end.unwrap_or(project.range.end_ms).min(duration_ms);
         if end_ms <= start_ms {
             anyhow::bail!("preview range requires --range-end greater than --range-start");
@@ -205,7 +210,11 @@ fn preview(
     }
 
     let preview = service.render_preview(&project, Some(max_width))?;
-    write_png_data_url(&preview.data_url, &out, "render preview did not return a PNG data URL")?;
+    write_png_data_url(
+        &preview.data_url,
+        &out,
+        "render preview did not return a PNG data URL",
+    )?;
 
     println!(
         "{}",
@@ -224,7 +233,11 @@ fn preview_project(project_path: PathBuf, out: PathBuf, max_width: u32) -> Resul
     let service = MediaService;
     let project = read_project(&project_path)?;
     let preview = service.render_preview(&project, Some(max_width))?;
-    write_png_data_url(&preview.data_url, &out, "render preview did not return a PNG data URL")?;
+    write_png_data_url(
+        &preview.data_url,
+        &out,
+        "render preview did not return a PNG data URL",
+    )?;
 
     println!(
         "{}",
@@ -360,9 +373,7 @@ fn apply_optional_crop(
 
     let (Some(x), Some(y), Some(width), Some(height)) = (crop_x, crop_y, crop_width, crop_height)
     else {
-        anyhow::bail!(
-            "crop requires --crop-x, --crop-y, --crop-width, and --crop-height together"
-        );
+        anyhow::bail!("crop requires --crop-x, --crop-y, --crop-width, and --crop-height together");
     };
     project.video.crop = Some(vpg_core::VideoCrop {
         x,
