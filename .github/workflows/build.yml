@@ -82,7 +82,7 @@ jobs:
       - name: Install Windows native-shell dependencies
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP\\vcpkg\\vcpkg.exe" install --triplet x64-windows
+          & "$env:RUNNER_TEMP\\vcpkg\\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$env:GITHUB_WORKSPACE"
       - name: Test core crate
         shell: pwsh
         run: cargo test -p vpg-core
@@ -98,7 +98,7 @@ jobs:
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%"
+          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_DIR="%GITHUB_WORKSPACE%" -DLIBMPV_DIR="%GITHUB_WORKSPACE%\.cache\libmpv\%LIBMPV_WINDOWS_TAG%"
           cmake --build build/native-shell-win --config Debug --parallel 4
       - name: Deploy Windows native runtime bundle
         shell: cmd

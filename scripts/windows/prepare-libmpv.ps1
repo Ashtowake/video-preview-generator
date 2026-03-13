@@ -85,8 +85,8 @@ try {
 
   $exportNames = New-Object System.Collections.Generic.List[string]
   foreach ($line in (& $dumpbin /nologo /exports $runtimeDllPath)) {
-    $tokens = ($line -split "\s+") | Where-Object { $_ }
-    if ($tokens.Length -ge 4 -and $tokens[0] -match "^\d+$" -and $tokens[1] -match "^[0-9A-F]+$" -and $tokens[2] -match "^[0-9A-F]+$") {
+    $tokens = @(($line -split "\s+") | Where-Object { $_ })
+    if ($tokens.Count -ge 4 -and $tokens[0] -match "^\d+$" -and $tokens[1] -match "^[0-9A-F]+$" -and $tokens[2] -match "^[0-9A-F]+$") {
       $exportNames.Add($tokens[3])
     }
   }
