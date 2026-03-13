@@ -120,7 +120,7 @@ if(WIN32)
   endif()
 
   add_custom_target(deploy-video-preview-native
-    COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations --compiler-runtime "$<TARGET_FILE:video-preview-native>"
+    COMMAND "${WINDEPLOYQT_EXECUTABLE}" --debug --no-translations --compiler-runtime "$<TARGET_FILE:video-preview-native>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VPG_LIBMPV_RUNTIME_DLL}" "$<TARGET_FILE_DIR:video-preview-native>/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VPG_REPO_ROOT}/target/debug/vpg-cli.exe" "$<TARGET_FILE_DIR:video-preview-native>/"
     DEPENDS video-preview-native
