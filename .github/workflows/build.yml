@@ -93,7 +93,12 @@ jobs:
           New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\.cache\\libmpv\\$env:LIBMPV_WINDOWS_TAG" -Force | Out-Null
       - name: Clone vcpkg
         shell: pwsh
-        run: git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
+          $baseline = (Get-Content "$env:GITHUB_WORKSPACE\\vcpkg.json" -Raw | ConvertFrom-Json)."builtin-baseline"
+          if ($baseline) {
+            git -C "$env:RUNNER_TEMP\\vcpkg" fetch --depth 1 origin $baseline
+          }
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |

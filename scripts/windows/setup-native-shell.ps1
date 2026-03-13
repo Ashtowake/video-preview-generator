@@ -91,6 +91,18 @@ function Ensure-Vcpkg {
     }
   }
 
+  $manifestPath = Join-Path $RepoRoot "vcpkg.json"
+  if (Test-Path $manifestPath) {
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    $baseline = $manifest."builtin-baseline"
+    if ($baseline) {
+      git -C $candidate fetch --depth 1 origin $baseline
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to fetch vcpkg builtin baseline '$baseline'."
+      }
+    }
+  }
+
   $bootstrap = Join-Path $candidate "bootstrap-vcpkg.bat"
   if (-not (Test-Path $bootstrap)) {
     throw "vcpkg bootstrap script not found at '$bootstrap'."
