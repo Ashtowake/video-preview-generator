@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -112,6 +113,17 @@ QString writeCachedJsonFile(
   file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
   file.close();
   return filePath;
+}
+
+bool isReadableImageFile(const QString& path)
+{
+  const QFileInfo info(path);
+  if (!info.exists() || !info.isFile() || info.size() <= 0) {
+    return false;
+  }
+
+  QImageReader reader(path);
+  return reader.canRead();
 }
 
 QJsonObject readJsonObjectFromFile(const QString& path, QString* errorMessage)
@@ -245,9 +257,10 @@ QString RustBridge::renderStarterPreview(
   const QString previewFileName = QStringLiteral("starter-preview-%1.png")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString previewPath = cacheDir.filePath(previewFileName);
-  if (QFileInfo::exists(previewPath)) {
+  if (isReadableImageFile(previewPath)) {
     return previewPath;
   }
+  QFile::remove(previewPath);
 
   QProcess process;
   process.setWorkingDirectory(workingDirectory());
@@ -300,7 +313,8 @@ QString RustBridge::renderStarterPreview(
     return {};
   }
 
-  if (!QFileInfo::exists(previewPath)) {
+  if (!isReadableImageFile(previewPath)) {
+    QFile::remove(previewPath);
     if (errorMessage) {
       *errorMessage = "Rust CLI preview command did not produce an image.";
     }
@@ -364,9 +378,10 @@ QString RustBridge::renderTimelineStrip(
   const QString stripFileName = QStringLiteral("timeline-strip-%1.png")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex()));
   const QString stripPath = cacheDir.filePath(stripFileName);
-  if (QFileInfo::exists(stripPath)) {
+  if (isReadableImageFile(stripPath)) {
     return stripPath;
   }
+  QFile::remove(stripPath);
 
   QStringList stripArguments{
     videoPath,
@@ -409,7 +424,8 @@ QString RustBridge::renderTimelineStrip(
     return {};
   }
 
-  if (!QFileInfo::exists(stripPath)) {
+  if (!isReadableImageFile(stripPath)) {
+    QFile::remove(stripPath);
     if (errorMessage) {
       *errorMessage = "Rust CLI timeline strip command did not produce an image.";
     }
@@ -441,9 +457,10 @@ QString RustBridge::renderProjectPreview(
   const QByteArray cacheKey = QFileInfo(projectPath).fileName().toUtf8() + '|' + QByteArray::number(maxWidth);
   const QString previewPath = QDir(cacheDirPath).filePath(QStringLiteral("project-preview-%1.png")
     .arg(QString::fromLatin1(QCryptographicHash::hash(cacheKey, QCryptographicHash::Sha1).toHex())));
-  if (QFileInfo::exists(previewPath)) {
+  if (isReadableImageFile(previewPath)) {
     return previewPath;
   }
+  QFile::remove(previewPath);
 
   QProcess process;
   process.setWorkingDirectory(workingDirectory());
@@ -467,7 +484,15 @@ QString RustBridge::renderProjectPreview(
     return {};
   }
 
-  return QFileInfo::exists(previewPath) ? previewPath : QString();
+  if (!isReadableImageFile(previewPath)) {
+    QFile::remove(previewPath);
+    if (errorMessage) {
+      *errorMessage = "Rust CLI project preview command did not produce an image.";
+    }
+    return {};
+  }
+
+  return previewPath;
 }
 
 QJsonObject RustBridge::findSharpestNeighbours(
