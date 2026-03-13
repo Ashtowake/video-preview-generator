@@ -55,21 +55,20 @@ jobs:
     runs-on: windows-latest
     env:
       LIBMPV_WINDOWS_TAG: 20260307
-      VCPKG_ROOT: ${{ runner.temp }}\\vcpkg
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Clone vcpkg
         shell: pwsh
-        run: git clone --depth 1 https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+        run: git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\\vcpkg"
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\\bootstrap-vcpkg.bat" -disableMetrics
+          & "$env:RUNNER_TEMP\\vcpkg\\bootstrap-vcpkg.bat" -disableMetrics
       - name: Install Windows native-shell dependencies
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows
+          & "$env:RUNNER_TEMP\\vcpkg\\vcpkg.exe" install --triplet x64-windows
       - name: Test core crate
         shell: pwsh
         run: cargo test -p vpg-core
@@ -79,7 +78,7 @@ jobs:
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set VSINSTALL=%%i
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\prepare-libmpv.ps1 -Destination "%RUNNER_TEMP%\libmpv" -ReleaseTag %LIBMPV_WINDOWS_TAG%
-          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%RUNNER_TEMP%\libmpv"
+          cmake -S apps/native-shell -B build/native-shell-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%RUNNER_TEMP%\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DLIBMPV_DIR="%RUNNER_TEMP%\libmpv"
           cmake --build build/native-shell-win --config Debug --parallel 4
       - name: Deploy Windows native runtime bundle
         shell: cmd
